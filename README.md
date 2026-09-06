@@ -7,8 +7,12 @@ This is a **retention experiment**, not a product. The question it exists to ans
 ## What's in the prototype
 
 - **Shop.** Three box types with the odds printed on every box, as "percent" and "1 in N". Free daily coins with a small streak bonus. No real money anywhere.
-- **Opening.** Tap the box three times to squish it, then a reveal with a rarity glow. Epics and legendaries get confetti.
-- **Collection.** 30 procedurally drawn dumplings (Series 1, "Steamer Pals"). Owned ones are squishable; unowned ones show as silhouettes. Filter by rarity.
+- **Lucky meter.** A Rare or better is guaranteed every 10 boxes, shown as a meter that fills up.
+- **Opening.** Tap the box three times: steam, escalating hits, a glow tease for a Rare or better, then the reveal. Epics and legendaries get confetti; the legendary gets a golden flash.
+- **Squish.** Press and drag any dumpling to deform it; release and it springs back with a wobble. Squeaks, pops and fanfares are synthesized in-app (no audio files) with a mute button, plus native haptics on iOS.
+- **Collection.** 30 procedurally drawn dumplings (Series 1, "Steamer Pals") across four body shapes and five patterns. Owned ones are squishable; unowned ones show as silhouettes. Kids can give each one a nickname.
+- **Steam Pot.** Sell spare dumplings for coins, always keeping the last copy. This is the in-app resale, in coins only.
+- **Album goals.** Coin rewards for completing each rarity set and the whole album.
 - **Trade.** Four neighbor bots stand in for real friends and use the same trade engine a real friend would. Rules:
   1. Atomic swap. Nobody gives first.
   2. Any change to either side clears both confirmations, so there is no last-second swap.
@@ -74,3 +78,7 @@ tests/                   vitest
 - Real money and cash-out. Random paid boxes plus resale is what regulators treat as gambling for minors.
 - Accounts, servers, and any data collection. Adding those means COPPA, so they wait until the retention question is answered.
 - Physical toys. If the characters get a following, that is a licensing conversation, not a manufacturing one.
+
+## Store screenshots
+
+`store/screenshots/` holds App Store screenshots at Apple's required sizes, generated from the web build with a seeded save. They were produced with a Playwright script that loads a populated save into the preview server and captures each tab at iPhone 6.9" (440x956 @3x) and iPad 13" (1032x1376 @2x) viewports. Regenerate them after any visual change.

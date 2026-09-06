@@ -66,7 +66,7 @@ Fill these in on the app record. All of them are required before "Submit for Rev
 | Privacy policy URL | `https://kendallcoding202.github.io/squishbox/privacy.html` |
 | Support URL | `https://github.com/kendallcoding202/squishbox` (or any page you control) |
 | App Privacy | "Data Not Collected". Nothing leaves the device. |
-| Screenshots | Required sizes: 6.9" iPhone and 13" iPad. Take them in the Simulator (Cmd+S) on "iPhone 16 Pro Max" and "iPad Pro 13-inch". Three to five each: shop, reveal, collection, trade, parent corner. |
+| Screenshots | Ready-made in `store/screenshots/`: six per device at Apple's exact sizes (iPhone 6.9" 1320x2868, iPad 13" 2064x2752). Upload the `iphone69-*` set and the `ipad13-*` set. Regenerate after visual changes with the Playwright script described in the README. |
 | Description | See below. |
 | Keywords | dumpling, squishy, blind box, collect, trade, kids, mystery box |
 | Copyright | Your name, 2026 |
