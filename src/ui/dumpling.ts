@@ -85,6 +85,15 @@ function hat(kind: Hat, body: string, ink: string): SVGElement[] {
       s("ellipse", { cx: 50, cy: 16, rx: 16, ry: 5, fill: "none", stroke: "#ffd23f", "stroke-width": 3.5 }),
       s("ellipse", { cx: 50, cy: 16, rx: 16, ry: 5, fill: "none", stroke: "#fff3b0", "stroke-width": 1.2 }),
     ];
+    case "chef": return [
+      s("path", { d: "M32 32 v-8 q0 -14 18 -12 q18 -2 18 12 v8 z", fill: "#fff", stroke: "#cfc8bd", "stroke-width": 2, "stroke-linejoin": "round" }),
+      s("path", { d: "M30 14 q6 -10 14 -2 q6 -8 12 0 q8 -8 14 2", fill: "#fff", stroke: "#cfc8bd", "stroke-width": 2, "stroke-linejoin": "round" }),
+      s("path", { d: "M32 32 h36", stroke: "#cfc8bd", "stroke-width": 2.5, "stroke-linecap": "round" }),
+    ];
+    case "flower": return [
+      ...[0, 72, 144, 216, 288].map((a) => s("ellipse", { cx: 70, cy: 22, rx: 4.5, ry: 7, fill: "#ff8fb6", stroke: "#e2679a", "stroke-width": 1.2, transform: `rotate(${a} 70 28)` })),
+      s("circle", { cx: 70, cy: 28, r: 4, fill: "#ffd23f", stroke: "#d9a400", "stroke-width": 1.2 }),
+    ];
     case "star": return [
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "#ffd23f", stroke: "#d9a400", "stroke-width": 1.5, "stroke-linejoin": "round" }),
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "none", stroke: edge, "stroke-width": 0 }),

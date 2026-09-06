@@ -1,15 +1,19 @@
-import { BOXES, type Box } from "../../data/boxes";
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
+import { boxesInSeries, BOXES, type Box } from "../../data/boxes";
+import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type SeriesId } from "../../data/characters";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
-  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount,
-  PITY_AT, REWARDS, rewardStatus, type OpenResult,
+  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
+  PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, takeNewUnlocks, type OpenResult,
 } from "../../game/state";
 import { confetti, h, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic, pop, reveal as revealSound, soundEnabled, thud } from "../sound";
 import { store } from "../store";
+
+let shopSeries: SeriesId = "s1";
+let rerender: () => void = () => {};
+export function onHomeRerender(fn: () => void): void { rerender = fn; }
 
 export function coinsPill(): HTMLElement {
   return h("div", { class: "coins", id: "coins" }, h("i", { class: "dot" }), String(store.state.coins));
@@ -64,7 +68,7 @@ export function startOpen(box: Box): void {
   let rolled: OpenResult = { ok: false, reason: "coins" };
   store.update((s) => { rolled = openBox(s, box, systemRng, new Date()); });
   const result = rolled as OpenResult;
-  if (!result.ok) { toast(result.reason === "cap" ? "That's enough boxes for today!" : "Not enough coins"); return; }
+  if (!result.ok) { toast(result.reason === "cap" ? "That's enough boxes for today!" : result.reason === "locked" ? "That series isn't unlocked yet" : "Not enough coins"); return; }
   const c = CHARACTER_BY_ID.get(result.characterId) as Character;
   const info = RARITY_INFO[c.rarity];
   const rarePlus = c.rarity === "rare" || c.rarity === "epic" || c.rarity === "legendary";
@@ -136,7 +140,7 @@ export function startOpen(box: Box): void {
 /** Pops a toast when a reward became claimable so the kid knows to look at the album. */
 function checkRewards(): void {
   const s = store.state;
-  const ready = REWARDS.filter((r) => rewardStatus(s, r) === "ready");
+  const ready = SERIES.filter((ser) => seriesUnlocked(s, ser.id)).flatMap((ser) => rewardsForSeries(ser.id)).filter((r) => rewardStatus(s, r) === "ready");
   if (ready.length) setTimeout(() => toast(`Album reward ready: ${ready[0]?.label}`), 1200);
 }
 
@@ -159,7 +163,9 @@ function luckyMeter(): HTMLElement {
 
 function albumCard(): HTMLElement {
   const s = store.state;
-  const rows = REWARDS.map((r) => {
+  const rows = SERIES.filter((ser) => seriesUnlocked(s, ser.id)).flatMap((ser) => [
+    h("div", { class: "row between", style: "margin-top:10px" }, h("b", { class: "small" }, ser.name), h("span", { class: "small muted" }, `${ownedInSeries(s.inventory, ser.id)} / ${charactersInSeries(ser.id).length}`)),
+    ...rewardsForSeries(ser.id).map((r) => {
     const status = rewardStatus(s, r);
     const [have, need] = r.progress(s.inventory);
     const pct = Math.round((have / need) * 100);
@@ -172,8 +178,59 @@ function albumCard(): HTMLElement {
         ? h("button", { class: "btn sm good", onclick: () => { let got = 0; store.update((st) => { got = claimReward(st, r.id, Date.now()); }); coin(); haptic("success"); toast(`+${got} coins!`); confetti(["#3fae7a", "#ffd23f", "#fff"], 40); } }, `+${r.coins}`)
         : h("span", { class: "pill", style: status === "claimed" ? "opacity:.5" : "" }, `+${r.coins}`),
     );
-  });
-  return h("div", { class: "card" }, h("h3", null, "Album goals"), h("p", { class: "muted small", style: "margin-bottom:8px" }, "Complete sets to earn coins."), ...rows);
+  })]);
+  return h("div", { class: "card" }, h("h3", null, "Album goals"), h("p", { class: "muted small" }, "Complete sets to earn coins."), ...rows);
+}
+
+function seriesTabs(): HTMLElement {
+  const s = store.state;
+  return h("div", { class: "chips", style: "padding-top:0" }, ...SERIES.map((ser) => {
+    const open = seriesUnlocked(s, ser.id);
+    return h("button", { class: "chip" + (shopSeries === ser.id ? " on" : ""), onclick: () => { shopSeries = ser.id; rerender(); } }, `${open ? "" : "🔒 "}${ser.name}`);
+  }));
+}
+
+/** Locked series: silhouettes of what's coming plus the unlock progress. */
+function teaser(id: SeriesId): HTMLElement {
+  const s = store.state;
+  const ser = SERIES_BY_ID.get(id);
+  const [have, need] = seriesUnlockProgress(s, id);
+  const from = ser?.unlockFrom ? SERIES_BY_ID.get(ser.unlockFrom)?.name : "";
+  const preview = charactersInSeries(id).filter((c) => c.rarity !== "legendary").slice(0, 6);
+  return h("div", { class: "card teaser" },
+    h("h3", null, `${ser?.name} is coming`),
+    h("p", { class: "muted small" }, ser?.tagline),
+    h("div", { class: "row", style: "justify-content:center;gap:4px;margin:12px 0" }, ...preview.map((c) => h("div", { class: "silhouette" }, dumplingEl(c, 56)))),
+    h("p", { class: "small", style: "font-weight:700" }, `Collect ${need} different ${from} to unlock. ${have} / ${need} so far.`),
+    h("div", { class: "bar", style: "height:8px;background:#f3ebe0;border-radius:4px;overflow:hidden;margin-top:6px" }, h("i", { style: `display:block;height:100%;width:${Math.round((have / need) * 100)}%;background:var(--accent)` })),
+  );
+}
+
+function celebrateUnlock(id: SeriesId): void {
+  const ser = SERIES_BY_ID.get(id);
+  if (!ser) return;
+  confetti(["#8fe0c4", "#ffd23f", "#ff8f5e", "#fff"], 120);
+  revealSound("epic"); haptic("success");
+  const ov = overlay(h("div", { class: "sheet" },
+    h("div", { class: "reveal-stage", style: "height:200px" }, h("div", { class: "glow on", style: "background:#bfeedd" }), dumplingEl(charactersInSeries(id)[0] as Character, 170, { idle: true })),
+    h("h2", null, `${ser.name} unlocked!`),
+    h("p", { class: "muted", style: "margin-top:8px" }, `${ser.tagline} New boxes are in the shop and there's a new neighbor to trade with.`),
+    h("button", { class: "btn block", style: "margin-top:16px", onclick: () => { shopSeries = id; ov.remove(); rerender(); } }, "Show me"),
+  ));
+}
+
+function shelfSection(): HTMLElement {
+  const s = store.state;
+  const items = s.shelf.map((id) => CHARACTER_BY_ID.get(id)).filter(Boolean) as Character[];
+  return h("div", null,
+    h("h2", null, "My shelf"),
+    items.length === 0
+      ? h("div", { class: "shelf empty" }, h("p", { class: "muted small" }, "Your shelf is empty. Tap a dumpling in your Collection and put it on display."))
+      : h("div", { class: "shelf" },
+          h("div", { class: "shelf-row" }, ...items.map((c) => h("div", { class: "shelf-item" }, dumplingEl(c, 72, { idle: true }), h("div", { class: "small", style: "font-weight:800" }, displayName(s, c.id))))),
+          h("div", { class: "plank" }),
+        ),
+  );
 }
 
 function welcome(): void {
@@ -194,6 +251,8 @@ export function renderHome(): HTMLElement {
   const owned = ownedCount(s.inventory);
 
   if (!s.onboarded && !document.querySelector(".overlay")) setTimeout(welcome, 50);
+  const fresh = takeNewUnlocks(s);
+  if (fresh.length) { store.persist(); if (!document.querySelector(".overlay")) setTimeout(() => celebrateUnlock(fresh[0] as SeriesId), 400); }
 
   const daily = h("div", { class: "card row between" },
     h("div", { class: "grow" },
@@ -220,13 +279,15 @@ export function renderHome(): HTMLElement {
     h("div", { class: "topbar" }, h("h1", null, "Squishbox"), h("div", { class: "row", style: "gap:8px" }, soundToggle(), coinsPill())),
     h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today${soundEnabled() ? "" : " · sound off"}`),
     daily,
+    shelfSection(),
     recentChars.length ? h("div", null,
       h("h2", null, "Fresh from the steamer"),
       h("div", { class: "row", style: "overflow-x:auto;gap:6px;padding-bottom:4px" }, ...recentChars.map((c) => h("div", { style: "text-align:center" }, dumplingEl(c, 64), h("div", { class: "small muted" }, displayName(s, c.id))))),
     ) : null,
     h("h2", null, "Shop"),
     h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box. Coins are free: no real money in this prototype."),
-    h("div", { class: "shop-grid" }, ...BOXES.map(boxCard)),
+    seriesTabs(),
+    seriesUnlocked(s, shopSeries) ? h("div", { class: "shop-grid" }, ...boxesInSeries(shopSeries).map(boxCard)) : teaser(shopSeries),
     h("h2", null, "Progress"),
     h("div", { class: "progress-grid" }, luckyMeter(), albumCard()),
   );

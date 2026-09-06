@@ -1,11 +1,12 @@
-import { CHARACTERS, RARITIES, RARITY_INFO, type Character, type Rarity } from "../../data/characters";
-import { displayName, NICKNAME_MAX, ownedCount, sellSpare, sellValue, setNickname, totalItems } from "../../game/state";
+import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type Rarity, type SeriesId } from "../../data/characters";
+import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems } from "../../game/state";
 import { confetti, h, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic } from "../sound";
 import { store } from "../store";
 
 let filter: Rarity | "all" = "all";
+let series: SeriesId = "s1";
 
 function detail(c: Character): void {
   const info = RARITY_INFO[c.rarity];
@@ -39,6 +40,15 @@ function detail(c: Character): void {
       swap();
     });
 
+    const shelved = onShelf(s, c.id);
+    const shelfBtn = h("button", { class: "btn sm" + (shelved ? " secondary" : ""), onclick: () => {
+      let r: ReturnType<typeof toggleShelf> = "full";
+      store.update((st) => { r = toggleShelf(st, c.id); });
+      if (r === "full") toast(`Shelf is full (${SHELF_MAX}). Take one off first.`);
+      else { haptic("light"); toast(r === "added" ? "On the shelf!" : "Off the shelf"); }
+      swap();
+    } }, shelved ? "Take off shelf" : "⭐ Put on shelf");
+
     return h("div", { class: "sheet" },
       h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true })),
       h("h2", { style: "margin-top:4px" }, nick ?? c.name),
@@ -46,6 +56,7 @@ function detail(c: Character): void {
       h("p", { class: "muted", style: "margin-top:10px" }, c.flavor),
       h("p", { class: "muted small", style: "margin-top:6px" }, "Press and drag to squish!"),
       h("div", { class: "row", style: "margin-top:14px;gap:8px" }, nameInput, h("button", { class: "btn sm", onclick: saveNick }, "Name")),
+      h("div", { style: "margin-top:10px" }, shelfBtn),
       h("div", { class: "row between", style: "margin-top:12px" },
         h("div", { class: "small muted grow", style: "text-align:left" }, count >= 2 ? `You have ${count - 1} spare${count > 2 ? "s" : ""}. The Steam Pot pays ${sellValue(c.id)} coins each.` : "Get a second one to trade or sell it."),
         sellBtn,
@@ -60,7 +71,9 @@ function detail(c: Character): void {
 
 export function renderCollection(): HTMLElement {
   const s = store.state;
-  const list = CHARACTERS.filter((c) => filter === "all" || c.rarity === filter);
+  const unlocked = seriesUnlocked(s, series);
+  const list = charactersInSeries(series).filter((c) => filter === "all" || c.rarity === filter);
+  const seriesChips = SERIES.map((ser) => h("button", { class: "chip" + (series === ser.id ? " on" : ""), onclick: () => { series = ser.id; rerender(); } }, `${seriesUnlocked(s, ser.id) ? "" : "🔒 "}${ser.name}`));
   const chips = [h("button", { class: "chip" + (filter === "all" ? " on" : ""), onclick: () => { filter = "all"; rerender(); } }, "All"),
     ...RARITIES.map((r) => h("button", {
       class: "chip" + (filter === r ? " on" : ""),
@@ -69,7 +82,7 @@ export function renderCollection(): HTMLElement {
     }, RARITY_INFO[r].label))];
 
   const tiles = list.map((c) => {
-    const n = s.inventory[c.id] ?? 0;
+    const n = unlocked ? (s.inventory[c.id] ?? 0) : 0;
     const info = RARITY_INFO[c.rarity];
     const art = dumplingEl(c, 80);
     const tile = h("div", {
@@ -79,6 +92,7 @@ export function renderCollection(): HTMLElement {
       "aria-label": n ? `${displayName(s, c.id)}, ${info.label}, owned ${n}` : `Unknown ${info.label} dumpling`,
     },
       n > 1 ? h("span", { class: "count" }, `×${n}`) : null,
+      onShelf(s, c.id) ? h("span", { class: "star" }, "⭐") : null,
       art,
       h("div", { class: "name" }, n ? displayName(s, c.id) : "???"),
     );
@@ -95,11 +109,16 @@ export function renderCollection(): HTMLElement {
     return tile;
   });
 
+  const [have, need] = seriesUnlockProgress(s, series);
+  const from = SERIES_BY_ID.get(series)?.unlockFrom;
   return h("div", { class: "screen" },
-    h("div", { class: "topbar" }, h("h1", null, "Collection"), h("span", { class: "pill" }, `${ownedCount(s.inventory)} / ${CHARACTERS.length}`)),
-    h("p", { class: "muted small", style: "margin-bottom:8px" }, `${totalItems(s.inventory)} dumplings in your basket. Tap one to name it or sell a spare.`),
+    h("div", { class: "topbar" }, h("h1", null, "Collection"), h("span", { class: "pill" }, `${ownedInSeries(s.inventory, series)} / ${charactersInSeries(series).length}`)),
+    h("p", { class: "muted small", style: "margin-bottom:8px" }, unlocked
+      ? `${totalItems(s.inventory)} dumplings in your basket. Tap one to name it, shelve it, or sell a spare.`
+      : `Locked. Collect ${need} different ${from ? SERIES_BY_ID.get(from)?.name : ""} to unlock. ${have} / ${need} so far.`),
+    h("div", { class: "chips", style: "padding-bottom:4px" }, ...seriesChips),
     h("div", { class: "chips" }, ...chips),
-    h("div", { class: "grid" }, ...tiles),
+    h("div", { class: "grid" + (unlocked ? "" : " locked-series") }, ...tiles),
   );
 }
 

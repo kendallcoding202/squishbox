@@ -1,7 +1,7 @@
 import "./style.css";
 import { clear, h } from "./ui/dom";
 import { onCollectionRerender, renderCollection } from "./ui/screens/collection";
-import { renderHome } from "./ui/screens/home";
+import { onHomeRerender, renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
 import { onTradeRerender, renderTrade } from "./ui/screens/trade";
 import { setSoundEnabled, unlockAudio } from "./ui/sound";
@@ -42,6 +42,7 @@ setSoundEnabled(store.state.settings.sound);
 store.subscribe((s) => { setSoundEnabled(s.settings.sound); render(); });
 document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
 onCollectionRerender(render);
+onHomeRerender(render);
 onTradeRerender(render);
 onParentsRerender(render);
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1) as Tab; if (TABS.some((x) => x.id === t) && t !== current) go(t); });

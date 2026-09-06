@@ -18,6 +18,11 @@ class Store {
     for (const l of this.listeners) l(this.state);
   }
 
+  /** Save without notifying listeners. For bookkeeping done during a render. */
+  persist(): void {
+    saveState(storage(), this.state);
+  }
+
   subscribe(l: Listener): () => void {
     this.listeners.add(l);
     return () => this.listeners.delete(l);

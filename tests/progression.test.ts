@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BOXES } from "../src/data/boxes";
-import { CHARACTERS, CHARACTER_BY_ID } from "../src/data/characters";
+import { CHARACTER_BY_ID, charactersInSeries } from "../src/data/characters";
 import { mulberry32 } from "../src/game/rng";
 import { claimReward, loadState, luckyNext, newState, openBox, PITY_AT, REWARDS, rewardStatus, SELL_VALUE, sellSpare, setNickname, displayName } from "../src/game/state";
 
@@ -66,7 +66,7 @@ describe("steam pot", () => {
 describe("album rewards", () => {
   it("unlock when a set is complete and can be claimed once", () => {
     const s = newState();
-    const commons = CHARACTERS.filter((c) => c.rarity === "common");
+    const commons = charactersInSeries("s1").filter((c) => c.rarity === "common");
     const r = REWARDS.find((x) => x.id === "set-common")!;
     expect(rewardStatus(s, r)).toBe("locked");
     for (const c of commons.slice(0, -1)) s.inventory[c.id] = 1;
@@ -81,12 +81,14 @@ describe("album rewards", () => {
     expect(claimReward(s, r.id, 1)).toBe(0);
   });
 
-  it("full album reward requires all 30", () => {
+  it("series 1 album reward requires all 30 Steamer Pals", () => {
     const s = newState();
     const r = REWARDS.find((x) => x.id === "album")!;
-    for (const c of CHARACTERS) s.inventory[c.id] = 1;
+    const s1 = charactersInSeries("s1");
+    for (const c of s1) s.inventory[c.id] = 1;
     expect(rewardStatus(s, r)).toBe("ready");
-    expect(r.progress(s.inventory)).toEqual([CHARACTERS.length, CHARACTERS.length]);
+    expect(r.progress(s.inventory)).toEqual([s1.length, s1.length]);
+    expect(s1.length).toBe(30);
   });
 });
 

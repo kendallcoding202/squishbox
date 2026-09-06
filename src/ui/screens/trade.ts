@@ -1,7 +1,7 @@
 import { BOTS, BOT_BY_ID, botAccepts, botProposal, type Bot } from "../../game/bots";
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { systemRng } from "../../game/rng";
-import { displayName, log, type Inventory } from "../../game/state";
+import { displayName, log, seriesUnlocked, type Inventory } from "../../game/state";
 import { assess, canConfirm, confirm, createTrade, execute, owns, setOffer, type SideKey, type Trade } from "../../game/trade";
 import { confetti, h, overlay, toast } from "../dom";
 import { haptic, nope, success } from "../sound";
@@ -18,6 +18,10 @@ let lastMessage: string | null = null;
 let rerender: () => void = () => {};
 export function onTradeRerender(fn: () => void): void { rerender = fn; }
 
+function visibleBots(): Bot[] {
+  return BOTS.filter((b) => !b.requiresSeries || seriesUnlocked(store.state, b.requiresSeries));
+}
+
 function spares(inv: Inventory): [string, number][] {
   return Object.entries(inv).filter(([, n]) => n >= 2);
 }
@@ -25,7 +29,7 @@ function spares(inv: Inventory): [string, number][] {
 function ensureProposals(): Trade[] {
   if (proposals) return proposals;
   const now = Date.now();
-  proposals = BOTS.map((b) => botProposal(b, store.botInventory(b.id), store.state.inventory, now, systemRng)).filter(Boolean) as Trade[];
+  proposals = visibleBots().map((b) => botProposal(b, store.botInventory(b.id), store.state.inventory, now, systemRng)).filter(Boolean) as Trade[];
   return proposals;
 }
 
@@ -178,7 +182,7 @@ export function renderTrade(): HTMLElement {
           );
         })),
     h("h2", null, "Neighbors"),
-    h("div", { class: "neighbors" }, ...BOTS.map((bot) => {
+    h("div", { class: "neighbors" }, ...visibleBots().map((bot) => {
       const inv = store.botInventory(bot.id);
       const sp = spares(inv);
       const preview = sp.slice(0, 4).map(([id]) => dumplingEl(CHARACTER_BY_ID.get(id) as Character, 36));

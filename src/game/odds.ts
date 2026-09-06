@@ -1,9 +1,9 @@
-import { CHARACTERS, RARITIES, type Character, type Rarity } from "../data/characters";
+import { charactersInSeries, RARITIES, type Character, type Rarity } from "../data/characters";
 import type { Box } from "../data/boxes";
 import { pickWeighted, type Rng } from "./rng";
 
-/** Roll one box: pick a rarity by the published odds, then a uniform character of that rarity. */
-export function rollBox(box: Box, rng: Rng, pool: readonly Character[] = CHARACTERS): Character {
+/** Roll one box: pick a rarity by the published odds, then a uniform character of that rarity from the box's series. */
+export function rollBox(box: Box, rng: Rng, pool: readonly Character[] = charactersInSeries(box.series)): Character {
   const weights = RARITIES.map((r) => box.odds[r]);
   const rarity = pickWeighted(RARITIES, weights, rng);
   const candidates = pool.filter((c) => c.rarity === rarity);

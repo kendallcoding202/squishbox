@@ -14,6 +14,8 @@ export interface Bot {
   minRatio: number;
   seed: number;
   startingBoxes: { box: string; n: number }[];
+  /** Only shows up once this series is unlocked. */
+  requiresSeries?: "s2";
 }
 
 export const BOTS: readonly Bot[] = [
@@ -21,6 +23,7 @@ export const BOTS: readonly Bot[] = [
   { id: "theo", name: "Theo", emoji: "🦖", minRatio: 0.95, seed: 22, startingBoxes: [{ box: "steamer", n: 10 }, { box: "golden", n: 4 }] },
   { id: "ruby", name: "Ruby", emoji: "🦊", minRatio: 1.1, seed: 33, startingBoxes: [{ box: "golden", n: 6 }, { box: "feast", n: 1 }] },
   { id: "sam", name: "Sam", emoji: "🐼", minRatio: 0.7, seed: 44, startingBoxes: [{ box: "steamer", n: 20 }] },
+  { id: "lin", name: "Lin", emoji: "🐉", minRatio: 0.9, seed: 55, startingBoxes: [{ box: "bamboo", n: 16 }, { box: "jade", n: 3 }], requiresSeries: "s2" },
 ];
 
 export const BOT_BY_ID: ReadonlyMap<string, Bot> = new Map(BOTS.map((b) => [b.id, b]));

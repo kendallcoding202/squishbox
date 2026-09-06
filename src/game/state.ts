@@ -1,4 +1,4 @@
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Rarity } from "../data/characters";
+import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
 import { rollBox } from "./odds";
 import type { Rng } from "./rng";
@@ -36,6 +36,10 @@ export interface SaveState {
   nicknames: Record<string, string>;
   rewardsClaimed: string[];
   onboarded: boolean;
+  /** Character ids on display, in order. Max SHELF_MAX. */
+  shelf: string[];
+  /** Series whose unlock celebration has already been shown. */
+  celebrated: SeriesId[];
 }
 
 export const STARTING_COINS = 50;
@@ -48,6 +52,7 @@ export const PITY_AT = 10;
 /** Coins paid by the Steam Pot for one spare, by rarity. */
 export const SELL_VALUE: Record<Rarity, number> = { common: 2, uncommon: 5, rare: 15, epic: 40, legendary: 120 };
 export const NICKNAME_MAX = 12;
+export const SHELF_MAX = 6;
 
 export function newState(playerName = "You"): SaveState {
   return {
@@ -67,7 +72,53 @@ export function newState(playerName = "You"): SaveState {
     nicknames: {},
     rewardsClaimed: [],
     onboarded: false,
+    shelf: [],
+    celebrated: [],
   };
+}
+
+// ---- Series ----
+
+export function ownedInSeries(inv: Inventory, id: SeriesId): number {
+  return charactersInSeries(id).filter((c) => (inv[c.id] ?? 0) > 0).length;
+}
+
+export function seriesUnlocked(state: SaveState, id: SeriesId): boolean {
+  const s = SERIES_BY_ID.get(id);
+  if (!s || !s.unlockFrom) return true;
+  return ownedInSeries(state.inventory, s.unlockFrom) >= s.unlockAt;
+}
+
+/** Progress toward unlocking a series as [have, need]. */
+export function seriesUnlockProgress(state: SaveState, id: SeriesId): [number, number] {
+  const s = SERIES_BY_ID.get(id);
+  if (!s || !s.unlockFrom) return [0, 0];
+  return [Math.min(s.unlockAt, ownedInSeries(state.inventory, s.unlockFrom)), s.unlockAt];
+}
+
+/** Series that just became unlocked and have not been celebrated yet. Marks them celebrated. */
+export function takeNewUnlocks(state: SaveState): SeriesId[] {
+  const fresh = SERIES.filter((s) => s.unlockFrom && seriesUnlocked(state, s.id) && !state.celebrated.includes(s.id)).map((s) => s.id);
+  for (const id of fresh) state.celebrated.push(id);
+  return fresh;
+}
+
+// ---- Shelf ----
+
+export function onShelf(state: SaveState, characterId: string): boolean {
+  return state.shelf.includes(characterId);
+}
+
+/** Toggle a dumpling on the shelf. Returns "added", "removed", or "full". Only owned dumplings can go on. */
+export function toggleShelf(state: SaveState, characterId: string): "added" | "removed" | "full" | "not-owned" {
+  if (onShelf(state, characterId)) {
+    state.shelf = state.shelf.filter((id) => id !== characterId);
+    return "removed";
+  }
+  if ((state.inventory[characterId] ?? 0) < 1) return "not-owned";
+  if (state.shelf.length >= SHELF_MAX) return "full";
+  state.shelf.push(characterId);
+  return "added";
 }
 
 export function dayKey(d: Date): string {
@@ -108,7 +159,7 @@ export function boxesOpenedToday(state: SaveState, today: Date): number {
 
 export type OpenResult =
   | { ok: true; characterId: string; isNew: boolean; lucky: boolean }
-  | { ok: false; reason: "coins" | "cap" };
+  | { ok: false; reason: "coins" | "cap" | "locked" };
 
 const RARE_PLUS: readonly Rarity[] = ["rare", "epic", "legendary"];
 
@@ -119,6 +170,7 @@ export function luckyNext(state: SaveState): boolean {
 
 /** Spend coins, roll the box, add to inventory. The lucky meter guarantees Rare+ every PITY_AT boxes. */
 export function openBox(state: SaveState, box: Box, rng: Rng, today: Date): OpenResult {
+  if (!seriesUnlocked(state, box.series)) return { ok: false, reason: "locked" };
   if (state.coins < box.price) return { ok: false, reason: "coins" };
   if (boxesOpenedToday(state, today) >= state.parent.dailyBoxCap) return { ok: false, reason: "cap" };
   const lucky = luckyNext(state);
@@ -161,28 +213,41 @@ export function sellSpare(state: SaveState, characterId: string, now: number): {
 
 export interface Reward {
   id: string;
+  series: SeriesId;
   label: string;
   coins: number;
   /** Progress as [have, need]. */
   progress: (inv: Inventory) => [number, number];
 }
 
-function rarityProgress(r: Rarity): (inv: Inventory) => [number, number] {
+function rarityProgress(series: SeriesId, r: Rarity): (inv: Inventory) => [number, number] {
   return (inv) => {
-    const all = CHARACTERS.filter((c) => c.rarity === r);
+    const all = charactersInSeries(series).filter((c) => c.rarity === r);
     return [all.filter((c) => (inv[c.id] ?? 0) > 0).length, all.length];
   };
 }
 
+function seriesRewards(series: SeriesId, prefix: string, legendaryLabel: string, scale: number): Reward[] {
+  const n = charactersInSeries(series).length;
+  return [
+    { id: `${prefix}set-common`, series, label: `All ${RARITY_INFO.common.label}s`, coins: Math.round(30 * scale), progress: rarityProgress(series, "common") },
+    { id: `${prefix}set-uncommon`, series, label: `All ${RARITY_INFO.uncommon.label}s`, coins: Math.round(40 * scale), progress: rarityProgress(series, "uncommon") },
+    { id: `${prefix}set-rare`, series, label: `All ${RARITY_INFO.rare.label}s`, coins: Math.round(60 * scale), progress: rarityProgress(series, "rare") },
+    { id: `${prefix}set-epic`, series, label: `All ${RARITY_INFO.epic.label}s`, coins: Math.round(100 * scale), progress: rarityProgress(series, "epic") },
+    { id: `${prefix}set-legendary`, series, label: legendaryLabel, coins: Math.round(150 * scale), progress: rarityProgress(series, "legendary") },
+    { id: `${prefix}album`, series, label: "Complete the whole album", coins: Math.round(500 * scale), progress: (inv) => [ownedInSeries(inv, series), n] },
+  ];
+}
+
 export const REWARDS: readonly Reward[] = [
-  { id: "first5", label: "Collect 5 different dumplings", coins: 15, progress: (inv) => [Math.min(5, ownedCount(inv)), 5] },
-  { id: "set-common", label: `All ${RARITY_INFO.common.label}s`, coins: 30, progress: rarityProgress("common") },
-  { id: "set-uncommon", label: `All ${RARITY_INFO.uncommon.label}s`, coins: 40, progress: rarityProgress("uncommon") },
-  { id: "set-rare", label: `All ${RARITY_INFO.rare.label}s`, coins: 60, progress: rarityProgress("rare") },
-  { id: "set-epic", label: `All ${RARITY_INFO.epic.label}s`, coins: 100, progress: rarityProgress("epic") },
-  { id: "set-legendary", label: "The Golden Dumpling", coins: 150, progress: rarityProgress("legendary") },
-  { id: "album", label: "Complete the whole album", coins: 500, progress: (inv) => [ownedCount(inv), CHARACTERS.length] },
+  { id: "first5", series: "s1", label: "Collect 5 different dumplings", coins: 15, progress: (inv) => [Math.min(5, ownedInSeries(inv, "s1")), 5] },
+  ...seriesRewards("s1", "", "The Golden Dumpling", 1),
+  ...seriesRewards("s2", "s2-", "The Jade Dragon", 1.2),
 ];
+
+export function rewardsForSeries(id: SeriesId): Reward[] {
+  return REWARDS.filter((r) => r.series === id);
+}
 
 export function rewardStatus(state: SaveState, r: Reward): "claimed" | "ready" | "locked" {
   if (state.rewardsClaimed.includes(r.id)) return "claimed";

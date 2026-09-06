@@ -214,3 +214,16 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 @media (min-width: 700px) {
   .progress-grid { grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 }
+
+/* ---- v3: series teaser, shelf ---- */
+.teaser .silhouette .dumpling { filter: grayscale(1) contrast(0.5) brightness(1.2); opacity: 0.7; }
+.shelf { position: relative; padding: 8px 8px 0; }
+.shelf.empty { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.shelf-row { display: flex; justify-content: space-around; align-items: flex-end; gap: 4px; padding: 0 6px; position: relative; z-index: 1; }
+.shelf-item { text-align: center; flex: 1; min-width: 0; }
+.shelf-item .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plank { height: 14px; margin-top: -6px; border-radius: 4px; background: linear-gradient(180deg, #d9a26b, #b9814d); box-shadow: 0 6px 10px rgba(90, 60, 20, 0.18); }
+.plank::after { content: ""; display: block; height: 6px; margin: 14px 10px 0; border-radius: 3px; background: rgba(90, 60, 20, 0.08); }
+.tile .star { position: absolute; top: 6px; left: 6px; font-size: 14px; }
+.grid.locked-series .tile { opacity: 0.55; }
+.grid.locked-series .tile .dumpling { filter: grayscale(1) contrast(0.6) brightness(1.15); }
