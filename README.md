@@ -37,12 +37,13 @@ Pushing to `main` runs the tests and publishes the app to `https://<user>.github
 
 ## iOS app (TestFlight and App Store)
 
-The same code ships as a native iOS app through Capacitor. On a Mac with Xcode:
+The same code ships as a native iOS app through Capacitor. The Xcode project is committed in
+`ios/`. On a Mac with Xcode:
 
 ```sh
-npm run ios:add     # first time: creates ios/ and generates icons + splash
-npm run ios:open    # opens Xcode; set your Team under Signing & Capabilities
-npm run ios:sync    # after every change: rebuild web and copy into ios/
+npm install
+npm run ios:sync    # rebuild the web app and copy it into ios/ (run after every change)
+npm run ios:open    # opens Xcode; set your Team under Signing & Capabilities, then Archive
 ```
 
 Full walkthrough, App Store Connect fields, and Kids Category rules: [docs/APP_STORE.md](docs/APP_STORE.md).

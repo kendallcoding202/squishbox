@@ -10,7 +10,6 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ios:add": "npm run build && npx cap add ios && npm run ios:assets",
     "ios:assets": "npx @capacitor/assets generate --ios --iconBackgroundColor '#ffd166' --splashBackgroundColor '#fff4e6' --splashBackgroundColorDark '#fff4e6'",
     "ios:sync": "npm run build && npx cap sync ios",
     "ios:open": "npx cap open ios"

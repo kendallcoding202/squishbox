@@ -4,33 +4,32 @@ The web app is the whole app. Capacitor wraps `dist/` in a native iOS shell so i
 App Store Connect. Everything below happens on a Mac with Xcode installed and your Apple Developer
 account signed in to Xcode (Xcode > Settings > Accounts).
 
-## 0. One-time decisions
+## 0. What is already done in the repo
 
-- **Bundle ID.** Edit `appId` in `capacitor.config.ts` to your own reverse-domain id, for example
-  `com.yourname.squishbox`. It must match the identifier you register in App Store Connect and it
-  cannot be changed after the first upload.
+- The Xcode project lives in `ios/` and is committed. It uses Swift Package Manager, so there is
+  no CocoaPods to install. Xcode downloads the Capacitor Swift package from GitHub the first time
+  the project opens, so be online. `npm install` is still needed for the sync step.
+- Bundle ID is `com.kendallcoding202.squishbox` (in `capacitor.config.ts` and the Xcode project).
+  Change both before the first upload if you want a different one; it cannot change afterwards.
+- Deployment target iOS 15.0, iPhone and iPad, version 1.0, build 1. All icon and splash sizes
+  are generated in `ios/App/App/Assets.xcassets`.
 - **App name.** "Squishbox" is set in `capacitor.config.ts`. Check the name is free in App Store
   Connect when you create the app record; if it is taken, pick a variant there and in the config.
 
-## 1. Generate the iOS project (first time only)
+## 1. First build on the Mac
 
 ```sh
+git clone https://github.com/kendallcoding202/squishbox.git
+cd squishbox
 npm install
-npm run ios:add        # builds the web app, creates ios/, generates icons and splash screens
+npm run ios:sync       # builds the web app and copies it into ios/App/App/public
+npm run ios:open       # opens the project in Xcode
 ```
 
-Commit the `ios/` folder. It is the Xcode project and should live in the repo.
+## 2. Signing in Xcode
 
-## 2. Open in Xcode and set signing
-
-```sh
-npm run ios:open
-```
-
-In Xcode: select the **App** target > **Signing & Capabilities** > tick *Automatically manage
-signing* and choose your Team. Confirm the Bundle Identifier matches `capacitor.config.ts`.
-
-Set **Deployment Info** to iOS 15.0 or later, and tick both iPhone and iPad.
+Select the **App** target > **Signing & Capabilities** > tick *Automatically manage signing* and
+choose your Team. Xcode registers the bundle id with your account on the spot.
 
 Run once on a simulator or a plugged-in iPad (Product > Run) and open every tab.
 
@@ -41,7 +40,8 @@ npm run ios:sync       # rebuilds the web app and copies it into the iOS project
 ```
 
 Then Product > Archive in Xcode. Bump the build number in Xcode (General > Build) before each
-upload; App Store Connect rejects a repeated build number.
+upload; App Store Connect rejects a repeated build number. Pick "Any iOS Device (arm64)" as the
+run destination first, or Archive is greyed out.
 
 ## 4. TestFlight (the friends-and-family test)
 
