@@ -33,7 +33,7 @@ The app is a mobile-first web page with a manifest, so it can be added to a phon
 
 ## Deploy
 
-Pushing to `main` runs the tests and, once GitHub Pages is set to "GitHub Actions" in the repo settings, publishes to `https://<user>.github.io/squishbox/`.
+Pushing to `main` runs the tests and publishes the app to `https://<user>.github.io/squishbox/`.
 
 ## Layout
 
