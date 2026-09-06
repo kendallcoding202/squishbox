@@ -1,6 +1,7 @@
-import type { Character, Face, Hat } from "../data/characters";
+import type { Character, Face, Hat, Pattern, Shape } from "../data/characters";
 import { RARITY_INFO } from "../data/characters";
 import { h } from "./dom";
+import { attachSquish } from "./squish";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -91,38 +92,86 @@ function hat(kind: Hat, body: string, ink: string): SVGElement[] {
   }
 }
 
+/** Body outline per shape. All share the same face position so hats and faces line up. */
+const SHAPES: Record<Shape, { d: string; top: number }> = {
+  round: { d: "M16 62C16 42 31 32 50 30C69 32 84 42 84 62C84 80 69 88 50 88C31 88 16 80 16 62Z", top: 31 },
+  tall: { d: "M21 60C21 36 34 27 50 25C66 27 79 36 79 60C79 82 67 90 50 90C33 90 21 82 21 60Z", top: 26 },
+  wide: { d: "M9 64C9 46 28 35 50 33C72 35 91 46 91 64C91 80 74 88 50 88C26 88 9 80 9 64Z", top: 34 },
+  bun: { d: "M15 66C15 44 31 31 50 30C69 31 85 44 85 66C85 80 78 86 50 86C22 86 15 80 15 66Z", top: 31 },
+};
+
+let clipSeq = 0;
+
+function pattern(kind: Pattern, edge: string, clipId: string): SVGElement[] {
+  const out: SVGElement[] = [];
+  const g = s("g", { "clip-path": `url(#${clipId})`, opacity: 0.55 });
+  switch (kind) {
+    case "none": return out;
+    case "speckle":
+      for (const [x, y, r] of [[30, 50, 1.4], [44, 44, 1.2], [62, 47, 1.5], [72, 58, 1.2], [36, 76, 1.3], [58, 80, 1.4], [24, 66, 1.1], [70, 76, 1.2]] as const)
+        g.appendChild(s("circle", { cx: x, cy: y, r, fill: edge }));
+      break;
+    case "dots":
+      for (const [x, y] of [[26, 48], [74, 48], [22, 74], [78, 74], [50, 84]] as const)
+        g.appendChild(s("circle", { cx: x, cy: y, r: 3.2, fill: "#fff", opacity: 0.9 }));
+      break;
+    case "stripe":
+      for (const y of [46, 78]) g.appendChild(s("path", { d: `M8 ${y} Q50 ${y - 6} 92 ${y}`, stroke: edge, "stroke-width": 4, fill: "none", "stroke-linecap": "round" }));
+      break;
+    case "swirl":
+      g.appendChild(s("path", { d: "M28 72 q4 -12 16 -8 q10 4 6 12 q-4 8 -12 4", stroke: edge, "stroke-width": 2.6, fill: "none", "stroke-linecap": "round" }));
+      g.appendChild(s("path", { d: "M62 78 q4 -10 14 -6", stroke: edge, "stroke-width": 2.6, fill: "none", "stroke-linecap": "round" }));
+      break;
+    case "hearts":
+      for (const [x, y] of [[26, 48], [74, 48], [50, 84]] as const)
+        g.appendChild(s("path", { d: `M${x} ${y + 3} l-4 -4 a2.4 2.4 0 0 1 4 -3 a2.4 2.4 0 0 1 4 3 z`, fill: "#ff6b8a", opacity: 0.85 }));
+      break;
+  }
+  out.push(g);
+  return out;
+}
+
 /** Build the SVG for a character. Same character always draws the same. */
 export function dumplingSvg(c: Character): SVGSVGElement {
   const svg = s("svg", { viewBox: "0 0 100 100", role: "img", "aria-label": c.name }) as SVGSVGElement;
   const ink = "#2b2118";
   const edge = darken(c.body, 0.22);
   const glow = RARITY_INFO[c.rarity].glow;
+  const shape = SHAPES[c.shape] ?? SHAPES.round;
+  const clipId = `dclip${++clipSeq}`;
+
+  const defs = s("defs", {});
+  const clip = s("clipPath", { id: clipId });
+  clip.appendChild(s("path", { d: shape.d }));
+  defs.appendChild(clip);
+  svg.appendChild(defs);
 
   if (c.rarity === "epic" || c.rarity === "legendary") {
-    svg.appendChild(s("ellipse", { cx: 50, cy: 62, rx: 44, ry: 36, fill: glow, opacity: 0.55 }));
+    svg.appendChild(s("ellipse", { cx: 50, cy: 62, rx: 46, ry: 38, fill: glow, opacity: 0.55 }));
   }
   svg.appendChild(s("ellipse", { cx: 50, cy: 90, rx: 30, ry: 5, fill: "rgba(0,0,0,0.08)" }));
   // body
-  svg.appendChild(s("path", {
-    d: "M16 62C16 42 31 32 50 30C69 32 84 42 84 62C84 80 69 88 50 88C31 88 16 80 16 62Z",
-    fill: c.body, stroke: edge, "stroke-width": 2.5,
-  }));
+  svg.appendChild(s("path", { d: shape.d, fill: c.body, stroke: edge, "stroke-width": 2.5 }));
+  for (const el of pattern(c.pattern, edge, clipId)) svg.appendChild(el);
   // pleats fanning from the top knot
   const n = Math.max(3, Math.min(7, c.pleats));
+  const top = shape.top;
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // -1..1
     const x2 = 50 + t * 20;
-    const y2 = 39 + Math.abs(t) * 3;
+    const y2 = top + 8 + Math.abs(t) * 3;
     const cx = 50 + t * 6;
-    svg.appendChild(s("path", { d: `M50 31 Q${cx} 33 ${x2} ${y2}`, stroke: edge, "stroke-width": 2.2, "stroke-linecap": "round", fill: "none", opacity: 0.85 }));
+    svg.appendChild(s("path", { d: `M50 ${top} Q${cx} ${top + 2} ${x2} ${y2}`, stroke: edge, "stroke-width": 2.2, "stroke-linecap": "round", fill: "none", opacity: 0.85 }));
   }
-  svg.appendChild(s("circle", { cx: 50, cy: 31, r: 3, fill: edge }));
+  svg.appendChild(s("circle", { cx: 50, cy: top, r: 3, fill: edge }));
   // highlight + blush
   svg.appendChild(s("ellipse", { cx: 34, cy: 44, rx: 8, ry: 4, fill: "#fff", opacity: 0.55, transform: "rotate(-20 34 44)" }));
   svg.appendChild(s("ellipse", { cx: 29, cy: 67, rx: 5.5, ry: 3.2, fill: c.blush, opacity: 0.9 }));
   svg.appendChild(s("ellipse", { cx: 71, cy: 67, rx: 5.5, ry: 3.2, fill: c.blush, opacity: 0.9 }));
   for (const el of face(c.face, ink)) svg.appendChild(el);
-  for (const el of hat(c.hat, c.body, ink)) svg.appendChild(el);
+  const hatGroup = s("g", { transform: `translate(0 ${top - 31})` });
+  for (const el of hat(c.hat, c.body, ink)) hatGroup.appendChild(el);
+  svg.appendChild(hatGroup);
   if (c.rarity === "legendary") {
     for (const [x, y] of [[14, 30], [88, 26], [90, 74], [10, 78]] as const) {
       svg.appendChild(s("path", { d: `M${x} ${y - 5} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 z`, fill: "#ffd23f" }));
@@ -131,19 +180,10 @@ export function dumplingSvg(c: Character): SVGSVGElement {
   return svg;
 }
 
-/** A squishable dumpling: press to squash, release to boing. */
+/** A squishable dumpling: press and drag to squash, release for a springy wobble. */
 export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean } = {}): HTMLElement {
-  const wrap = h("div", { class: `dumpling${opts.idle ? " idle" : ""}`, style: `width:${size}px;height:${size}px` }, dumplingSvg(c));
-  const down = () => { wrap.classList.remove("boing", "idle"); wrap.classList.add("squish"); };
-  const up = () => {
-    if (!wrap.classList.contains("squish")) return;
-    wrap.classList.remove("squish");
-    wrap.classList.add("boing");
-    wrap.addEventListener("animationend", () => { wrap.classList.remove("boing"); if (opts.idle) wrap.classList.add("idle"); }, { once: true });
-  };
-  wrap.addEventListener("pointerdown", down);
-  wrap.addEventListener("pointerup", up);
-  wrap.addEventListener("pointercancel", up);
-  wrap.addEventListener("pointerleave", up);
+  const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingSvg(c));
+  const wrap = h("div", { class: "dumpling", style: `width:${size}px;height:${size}px` }, inner);
+  attachSquish(wrap, { size, rarity: c.rarity, voice: (c.id.charCodeAt(1) * 7 + c.id.charCodeAt(2)) % 12 });
   return wrap;
 }

@@ -1,9 +1,10 @@
 import { BOTS, BOT_BY_ID, botAccepts, botProposal, type Bot } from "../../game/bots";
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { systemRng } from "../../game/rng";
-import { log, type Inventory } from "../../game/state";
+import { displayName, log, type Inventory } from "../../game/state";
 import { assess, canConfirm, confirm, createTrade, execute, owns, setOffer, type SideKey, type Trade } from "../../game/trade";
 import { confetti, h, overlay, toast } from "../dom";
+import { haptic, nope, success } from "../sound";
 import { dumplingEl } from "../dumpling";
 import { store } from "../store";
 
@@ -48,7 +49,7 @@ function miniItem(id: string, onRemove?: () => void): HTMLElement {
   const c = CHARACTER_BY_ID.get(id) as Character;
   return h("div", { class: "trade-item" },
     dumplingEl(c, 48),
-    h("div", { class: "small", style: "font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, c.name),
+    h("div", { class: "small", style: "font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, displayName(store.state, c.id)),
     onRemove ? h("button", { class: "rm", "aria-label": `Remove ${c.name}`, onclick: onRemove }, "×") : null,
   );
 }
@@ -99,11 +100,13 @@ function onConfirm(): void {
       });
       proposals = null;
       confetti(["#3fae7a", "#ffd23f", "#ff8f5e"], 50);
+      success(); haptic("success");
       toast(`Trade complete with ${bot.name}!`);
       closeTrade();
     } else {
       active = setOffer(t, "b", t.b.items, Date.now()); // resets both confirmations so the kid can edit
       store.update((s) => { s.stats.tradesDeclined += 1; });
+      nope(); haptic("medium");
       lastMessage = `${bot.name} said no thanks. ${bot.minRatio > 1 ? `${bot.name} only trades up.` : "Try adding a bit more, or ask for less."}`;
       rerender();
     }

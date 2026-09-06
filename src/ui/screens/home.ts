@@ -1,15 +1,26 @@
 import { BOXES, type Box } from "../../data/boxes";
-import { CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
+import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
-import { boxesOpenedToday, canClaimDaily, claimDaily, openBox, ownedCount, type OpenResult } from "../../game/state";
-import { CHARACTERS } from "../../data/characters";
+import {
+  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount,
+  PITY_AT, REWARDS, rewardStatus, type OpenResult,
+} from "../../game/state";
 import { confetti, h, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
+import { coin, haptic, pop, reveal as revealSound, soundEnabled, thud } from "../sound";
 import { store } from "../store";
 
 export function coinsPill(): HTMLElement {
   return h("div", { class: "coins", id: "coins" }, h("i", { class: "dot" }), String(store.state.coins));
+}
+
+export function soundToggle(): HTMLElement {
+  const on = store.state.settings.sound;
+  return h("button", {
+    class: "iconbtn", "aria-label": on ? "Sound on" : "Sound off", "aria-pressed": String(on),
+    onclick: () => store.update((s) => { s.settings.sound = !s.settings.sound; }),
+  }, on ? "🔊" : "🔇");
 }
 
 function oddsTable(box: Box): HTMLElement {
@@ -30,12 +41,13 @@ function boxCard(box: Box): HTMLElement {
   const today = new Date();
   const short = box.price - s.coins;
   const capped = boxesOpenedToday(s, today) >= s.parent.dailyBoxCap;
+  const lucky = luckyNext(s);
   const btn = h("button", {
-    class: "btn block",
+    class: "btn block" + (lucky ? " lucky" : ""),
     style: "margin-top:14px",
     disabled: short > 0 || capped,
     onclick: () => startOpen(box),
-  }, capped ? "Done for today" : short > 0 ? `Need ${short} more` : `Open · ${box.price}`);
+  }, capped ? "Done for today" : short > 0 ? `Need ${short} more` : lucky ? `Lucky open! · ${box.price}` : `Open · ${box.price}`);
   return h("div", { class: "card box-card" },
     h("div", { class: "row" },
       h("div", { class: "emoji" }, box.emoji),
@@ -47,29 +59,40 @@ function boxCard(box: Box): HTMLElement {
   );
 }
 
-/** Box-opening ceremony: three squishes, then the reveal. */
-function startOpen(box: Box): void {
+/** Box-opening ceremony: three squishes with steam, a rarity tease, then the reveal. */
+export function startOpen(box: Box): void {
   let rolled: OpenResult = { ok: false, reason: "coins" };
   store.update((s) => { rolled = openBox(s, box, systemRng, new Date()); });
   const result = rolled as OpenResult;
   if (!result.ok) { toast(result.reason === "cap" ? "That's enough boxes for today!" : "Not enough coins"); return; }
   const c = CHARACTER_BY_ID.get(result.characterId) as Character;
   const info = RARITY_INFO[c.rarity];
+  const rarePlus = c.rarity === "rare" || c.rarity === "epic" || c.rarity === "legendary";
 
   let taps = 0;
   const dots = [0, 1, 2].map(() => h("i"));
   const glow = h("div", { class: "glow", style: `background:${info.glow}` });
-  const mystery = h("div", { class: "mystery", role: "button", "aria-label": "Squish the box" }, box.emoji);
-  const stage = h("div", { class: "reveal-stage" }, glow, mystery);
-  const title = h("h2", { style: "margin:6px 0 0" }, "Squish it!");
-  const sub = h("p", { class: "muted" }, "Tap the box three times");
+  const mystery = h("div", { class: "mystery", role: "button", "aria-label": "Squish the box", tabindex: "0" }, box.emoji);
+  const steam = h("div", { class: "steam" });
+  const stage = h("div", { class: "reveal-stage" }, glow, steam, mystery);
+  const title = h("h2", { style: "margin:6px 0 0" }, result.lucky ? "Lucky box!" : "Squish it!");
+  const sub = h("p", { class: "muted" }, result.lucky ? "A Rare or better is guaranteed. Tap three times!" : "Tap the box three times");
   const footer = h("div", { style: "margin-top:16px;display:flex;gap:10px;justify-content:center" });
-  const sheet = h("div", { class: "sheet" }, stage, h("div", { class: "taps" }, ...dots), title, sub, footer);
+  const sheet = h("div", { class: "sheet" + (c.rarity === "legendary" ? " legendary" : "") }, stage, h("div", { class: "taps" }, ...dots), title, sub, footer);
   const ov = overlay(sheet);
 
-  const reveal = () => {
+  const puff = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      const p = h("i", { style: `left:${35 + Math.random() * 30}%;animation-delay:${Math.random() * 0.2}s;--dx:${(Math.random() - 0.5) * 60}px` });
+      steam.appendChild(p);
+      setTimeout(() => p.remove(), 1400);
+    }
+  };
+
+  const doReveal = () => {
     mystery.remove();
     glow.classList.add("on");
+    if (c.rarity === "legendary") ov.classList.add("flash");
     const d = dumplingEl(c, 200, { idle: true });
     d.classList.add("reveal-in");
     stage.appendChild(d);
@@ -78,23 +101,90 @@ function startOpen(box: Box): void {
       h("span", { class: "badge", style: `background:${info.color}` }, info.label), " ",
       h("span", { class: "muted small" }, c.flavor),
     );
-    if (c.rarity === "epic" || c.rarity === "legendary") confetti([info.color, info.glow, "#ff8f5e", "#fff"], c.rarity === "legendary" ? 140 : 70);
+    pop();
+    setTimeout(() => revealSound(c.rarity), 120);
+    haptic(rarePlus ? "success" : "medium");
+    if (c.rarity === "epic" || c.rarity === "legendary") confetti([info.color, info.glow, "#ff8f5e", "#fff"], c.rarity === "legendary" ? 160 : 70);
     const again = h("button", { class: "btn", onclick: () => { ov.remove(); startOpen(box); } }, `Open another · ${box.price}`);
     const s = store.state;
     if (s.coins < box.price || boxesOpenedToday(s, new Date()) >= s.parent.dailyBoxCap) again.disabled = true;
     footer.append(h("button", { class: "btn secondary", onclick: () => ov.remove() }, "Done"), again);
+    if (result.isNew) checkRewards();
   };
 
-  mystery.addEventListener("pointerdown", () => {
+  const hit = () => {
     if (taps >= 3) return;
     taps++;
     dots[taps - 1]?.classList.add("on");
-    mystery.classList.remove("hit");
+    mystery.classList.remove("hit1", "hit2", "hit3");
     void mystery.offsetWidth; // restart animation
-    mystery.classList.add("hit");
-    if (navigator.vibrate) navigator.vibrate(15);
-    if (taps === 3) setTimeout(reveal, 250);
+    mystery.classList.add(`hit${taps}`);
+    thud(0.6 + taps * 0.2);
+    haptic(taps === 3 ? "heavy" : "light");
+    puff(2 + taps * 2);
+    if (taps === 2 && rarePlus) {
+      // tease: the glow leaks out before the reveal for a rare or better
+      glow.classList.add("tease");
+      sub.textContent = "Ooh… something's glowing";
+    }
+    if (taps === 3) setTimeout(doReveal, 260);
+  };
+  mystery.addEventListener("pointerdown", hit);
+  mystery.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") hit(); });
+}
+
+/** Pops a toast when a reward became claimable so the kid knows to look at the album. */
+function checkRewards(): void {
+  const s = store.state;
+  const ready = REWARDS.filter((r) => rewardStatus(s, r) === "ready");
+  if (ready.length) setTimeout(() => toast(`Album reward ready: ${ready[0]?.label}`), 1200);
+}
+
+function luckyMeter(): HTMLElement {
+  const s = store.state;
+  const n = Math.min(s.pity, PITY_AT - 1);
+  const next = luckyNext(s);
+  const segs = Array.from({ length: PITY_AT }, (_, i) => h("i", { class: i < n ? "on" : i === n && next ? "on" : "" }));
+  return h("div", { class: "card" },
+    h("div", { class: "row between" },
+      h("div", { class: "grow" },
+        h("h3", null, next ? "Lucky meter is full!" : "Lucky meter"),
+        h("p", { class: "muted small" }, next ? "Your next box is guaranteed Rare or better." : `A Rare or better is guaranteed by box ${PITY_AT}. ${PITY_AT - 1 - n} to go.`),
+      ),
+      h("span", { class: "pill" }, `${next ? PITY_AT : n} / ${PITY_AT}`),
+    ),
+    h("div", { class: "meter" + (next ? " full" : "") }, ...segs),
+  );
+}
+
+function albumCard(): HTMLElement {
+  const s = store.state;
+  const rows = REWARDS.map((r) => {
+    const status = rewardStatus(s, r);
+    const [have, need] = r.progress(s.inventory);
+    const pct = Math.round((have / need) * 100);
+    return h("div", { class: "reward " + status },
+      h("div", { class: "grow" },
+        h("div", { class: "row between" }, h("b", { class: "small" }, r.label), h("span", { class: "small muted" }, status === "claimed" ? "✓ claimed" : `${have} / ${need}`)),
+        h("div", { class: "bar" }, h("i", { style: `width:${pct}%` })),
+      ),
+      status === "ready"
+        ? h("button", { class: "btn sm good", onclick: () => { let got = 0; store.update((st) => { got = claimReward(st, r.id, Date.now()); }); coin(); haptic("success"); toast(`+${got} coins!`); confetti(["#3fae7a", "#ffd23f", "#fff"], 40); } }, `+${r.coins}`)
+        : h("span", { class: "pill", style: status === "claimed" ? "opacity:.5" : "" }, `+${r.coins}`),
+    );
   });
+  return h("div", { class: "card" }, h("h3", null, "Album goals"), h("p", { class: "muted small", style: "margin-bottom:8px" }, "Complete sets to earn coins."), ...rows);
+}
+
+function welcome(): void {
+  const first = BOXES[0] as Box;
+  const ov = overlay(h("div", { class: "sheet" },
+    h("div", { class: "reveal-stage", style: "height:200px" }, h("div", { class: "glow on", style: "background:#ffe08a" }), dumplingEl(CHARACTERS[0] as Character, 170, { idle: true })),
+    h("h2", null, "Welcome to Squishbox!"),
+    h("p", { class: "muted", style: "margin-top:8px" }, "Open steamer baskets, collect squishy dumplings, and trade your spares. Press a dumpling to squish it. Here are 50 coins to start."),
+    h("button", { class: "btn block", style: "margin-top:16px", onclick: () => { store.update((s) => { s.onboarded = true; }); ov.remove(); startOpen(first); } }, "Open my first basket"),
+    h("button", { class: "btn ghost block", style: "margin-top:6px", onclick: () => { store.update((s) => { s.onboarded = true; }); ov.remove(); } }, "Look around first"),
+  ), () => store.update((s) => { s.onboarded = true; }));
 }
 
 export function renderHome(): HTMLElement {
@@ -102,6 +192,8 @@ export function renderHome(): HTMLElement {
   const today = new Date();
   const claimable = canClaimDaily(s, today);
   const owned = ownedCount(s.inventory);
+
+  if (!s.onboarded && !document.querySelector(".overlay")) setTimeout(welcome, 50);
 
   const daily = h("div", { class: "card row between" },
     h("div", { class: "grow" },
@@ -114,6 +206,7 @@ export function renderHome(): HTMLElement {
       onclick: () => {
         let got = 0;
         store.update((st) => { got = claimDaily(st, new Date()); });
+        coin(); haptic("success");
         toast(`+${got} coins!`);
         document.getElementById("coins")?.classList.add("bump");
       },
@@ -124,15 +217,17 @@ export function renderHome(): HTMLElement {
   const recentChars = recent.map((name) => CHARACTERS.find((c) => c.name === name)).filter(Boolean) as Character[];
 
   return h("div", { class: "screen" },
-    h("div", { class: "topbar" }, h("h1", null, "Squishbox"), coinsPill()),
-    h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today`),
+    h("div", { class: "topbar" }, h("h1", null, "Squishbox"), h("div", { class: "row", style: "gap:8px" }, soundToggle(), coinsPill())),
+    h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today${soundEnabled() ? "" : " · sound off"}`),
     daily,
     recentChars.length ? h("div", null,
       h("h2", null, "Fresh from the steamer"),
-      h("div", { class: "row", style: "overflow-x:auto;gap:6px;padding-bottom:4px" }, ...recentChars.map((c) => dumplingEl(c, 64))),
+      h("div", { class: "row", style: "overflow-x:auto;gap:6px;padding-bottom:4px" }, ...recentChars.map((c) => h("div", { style: "text-align:center" }, dumplingEl(c, 64), h("div", { class: "small muted" }, displayName(s, c.id))))),
     ) : null,
     h("h2", null, "Shop"),
     h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box. Coins are free: no real money in this prototype."),
     h("div", { class: "shop-grid" }, ...BOXES.map(boxCard)),
+    h("h2", null, "Progress"),
+    h("div", { class: "progress-grid" }, luckyMeter(), albumCard()),
   );
 }

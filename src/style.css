@@ -71,20 +71,12 @@ p.muted, .muted { color: var(--muted); }
 .odds .pct { font-weight: 800; text-align: right; }
 .odds .onein { color: var(--muted); text-align: right; min-width: 56px; }
 
-/* dumpling */
-.dumpling { display: inline-block; transform-origin: 50% 90%; transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.dumpling.squish { transform: scale(1.22, 0.78); transition-duration: 0.08s; }
-.dumpling.boing { animation: boing 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
-@keyframes boing {
-  0% { transform: scale(1.22, 0.78); }
-  30% { transform: scale(0.86, 1.16); }
-  55% { transform: scale(1.08, 0.94); }
-  75% { transform: scale(0.97, 1.03); }
-  100% { transform: scale(1, 1); }
-}
-.dumpling.idle { animation: idle 3.2s ease-in-out infinite; }
+/* dumpling: outer div is driven by the spring in squish.ts, inner div carries the idle breathing */
+.dumpling { display: inline-block; will-change: transform; cursor: pointer; }
+.dumpling-inner { width: 100%; height: 100%; transform-origin: 50% 92%; }
+.dumpling-inner.idle { animation: idle 3.2s ease-in-out infinite; }
 @keyframes idle { 50% { transform: scale(1.03, 0.97) translateY(1px); } }
-.dumpling svg { display: block; width: 100%; height: 100%; }
+.dumpling svg { display: block; width: 100%; height: 100%; pointer-events: none; }
 
 /* collection grid */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -189,4 +181,36 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 }
 @media (min-width: 700px) and (max-width: 899px) {
   .shop-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---- v2: icon button, lucky meter, album, steam, reveal drama ---- */
+.iconbtn { width: 40px; height: 40px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow); font-size: 18px; display: grid; place-items: center; }
+.btn.lucky { background: linear-gradient(90deg, #f2a900, #ff8f5e); animation: shimmer 1.4s ease-in-out infinite; }
+@keyframes shimmer { 50% { filter: brightness(1.15); } }
+.meter { display: flex; gap: 4px; margin-top: 10px; }
+.meter i { flex: 1; height: 10px; border-radius: 5px; background: #f3ebe0; }
+.meter i.on { background: linear-gradient(90deg, #ffc53d, #ff8f5e); }
+.meter.full i.on { animation: shimmer 1s ease-in-out infinite; }
+.progress-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.progress-grid .card + .card { margin-top: 0; }
+.reward { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.reward .bar { height: 6px; background: #f3ebe0; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.reward .bar > i { display: block; height: 100%; background: var(--good); border-radius: 3px; transition: width 0.4s; }
+.reward.claimed { opacity: 0.55; }
+.reward.claimed .bar > i { background: #b9c6bf; }
+.steam { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.steam i { position: absolute; bottom: 40%; width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.85); filter: blur(2px); animation: rise 1.3s ease-out forwards; }
+@keyframes rise { to { transform: translate(var(--dx, 0), -120px) scale(2.2); opacity: 0; } }
+.mystery.hit1 { animation: hit 0.3s ease; }
+.mystery.hit2 { animation: hit2 0.35s ease; }
+.mystery.hit3 { animation: hit3 0.3s ease; }
+@keyframes hit2 { 30% { transform: scale(1.32, 0.72) rotate(-6deg); } 70% { transform: scale(0.94, 1.1) rotate(4deg); } }
+@keyframes hit3 { 20% { transform: scale(1.45, 0.62); } 60% { transform: scale(0.8, 1.25); } 100% { transform: scale(1.1, 0.95); } }
+.reveal-stage .glow.tease { opacity: 0.45; animation: pulse 0.8s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.75; transform: scale(1.06); } }
+.overlay.flash { animation: flash 0.9s ease-out; }
+@keyframes flash { 0% { background: rgba(255, 224, 138, 0.95); } 100% { background: rgba(43, 33, 24, 0.55); } }
+.sheet.legendary { box-shadow: 0 0 0 4px #ffd23f, 0 20px 60px rgba(242, 169, 0, 0.45); }
+@media (min-width: 700px) {
+  .progress-grid { grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 }

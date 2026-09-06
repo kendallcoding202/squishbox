@@ -4,6 +4,7 @@ import { onCollectionRerender, renderCollection } from "./ui/screens/collection"
 import { renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
 import { onTradeRerender, renderTrade } from "./ui/screens/trade";
+import { setSoundEnabled, unlockAudio } from "./ui/sound";
 import { store } from "./ui/store";
 
 type Tab = "home" | "collection" | "trade" | "parents";
@@ -37,7 +38,9 @@ function go(tab: Tab): void {
   render();
 }
 
-store.subscribe(render);
+setSoundEnabled(store.state.settings.sound);
+store.subscribe((s) => { setSoundEnabled(s.settings.sound); render(); });
+document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
 onCollectionRerender(render);
 onTradeRerender(render);
 onParentsRerender(render);

@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+import { BOXES } from "../src/data/boxes";
+import { CHARACTERS, CHARACTER_BY_ID } from "../src/data/characters";
+import { mulberry32 } from "../src/game/rng";
+import { claimReward, loadState, luckyNext, newState, openBox, PITY_AT, REWARDS, rewardStatus, SELL_VALUE, sellSpare, setNickname, displayName } from "../src/game/state";
+
+const day = new Date("2026-09-06T10:00:00");
+const steamer = BOXES[0]!;
+
+describe("lucky meter", () => {
+  it("forces Rare or better on the PITY_AT-th box and then resets", () => {
+    const s = newState();
+    s.coins = 100000;
+    s.parent.dailyBoxCap = 1000;
+    const rng = mulberry32(99);
+    let forced = 0;
+    for (let i = 0; i < 400; i++) {
+      const wasLucky = luckyNext(s);
+      const r = openBox(s, steamer, rng, day);
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(r.lucky).toBe(wasLucky);
+      const rarity = CHARACTER_BY_ID.get(r.characterId)!.rarity;
+      if (wasLucky) {
+        forced++;
+        expect(["rare", "epic", "legendary"]).toContain(rarity);
+        expect(s.pity).toBe(0);
+      }
+      expect(s.pity).toBeLessThan(PITY_AT);
+    }
+    expect(forced).toBeGreaterThan(0);
+  });
+
+  it("never goes more than PITY_AT boxes without a Rare+", () => {
+    const s = newState();
+    s.coins = 100000;
+    s.parent.dailyBoxCap = 1000;
+    const rng = mulberry32(5);
+    let gap = 0;
+    for (let i = 0; i < 300; i++) {
+      const r = openBox(s, steamer, rng, day);
+      if (!r.ok) throw new Error("unexpected");
+      const rarity = CHARACTER_BY_ID.get(r.characterId)!.rarity;
+      gap = ["rare", "epic", "legendary"].includes(rarity) ? 0 : gap + 1;
+      expect(gap).toBeLessThan(PITY_AT);
+    }
+  });
+});
+
+describe("steam pot", () => {
+  it("sells only spares, pays by rarity, and keeps the last copy", () => {
+    const s = newState();
+    s.inventory = { c01: 3, r01: 1 };
+    const before = s.coins;
+    expect(sellSpare(s, "r01", 1)).toEqual({ ok: false });
+    expect(sellSpare(s, "c01", 1)).toEqual({ ok: true, coins: SELL_VALUE.common });
+    expect(sellSpare(s, "c01", 1)).toEqual({ ok: true, coins: SELL_VALUE.common });
+    expect(sellSpare(s, "c01", 1)).toEqual({ ok: false });
+    expect(s.inventory.c01).toBe(1);
+    expect(s.coins).toBe(before + 2 * SELL_VALUE.common);
+    expect(s.stats.coinsFromSales).toBe(2 * SELL_VALUE.common);
+    expect(s.log[0]?.kind).toBe("sell");
+  });
+});
+
+describe("album rewards", () => {
+  it("unlock when a set is complete and can be claimed once", () => {
+    const s = newState();
+    const commons = CHARACTERS.filter((c) => c.rarity === "common");
+    const r = REWARDS.find((x) => x.id === "set-common")!;
+    expect(rewardStatus(s, r)).toBe("locked");
+    for (const c of commons.slice(0, -1)) s.inventory[c.id] = 1;
+    expect(rewardStatus(s, r)).toBe("locked");
+    expect(claimReward(s, r.id, 1)).toBe(0);
+    s.inventory[commons[commons.length - 1]!.id] = 1;
+    expect(rewardStatus(s, r)).toBe("ready");
+    const coins = s.coins;
+    expect(claimReward(s, r.id, 1)).toBe(r.coins);
+    expect(s.coins).toBe(coins + r.coins);
+    expect(rewardStatus(s, r)).toBe("claimed");
+    expect(claimReward(s, r.id, 1)).toBe(0);
+  });
+
+  it("full album reward requires all 30", () => {
+    const s = newState();
+    const r = REWARDS.find((x) => x.id === "album")!;
+    for (const c of CHARACTERS) s.inventory[c.id] = 1;
+    expect(rewardStatus(s, r)).toBe("ready");
+    expect(r.progress(s.inventory)).toEqual([CHARACTERS.length, CHARACTERS.length]);
+  });
+});
+
+describe("nicknames", () => {
+  it("sanitizes, caps length, and clears on empty", () => {
+    const s = newState();
+    expect(setNickname(s, "c01", "  Sir <b>Bao</b> the   Great!!! ")).toBe("Sir bBaob th");
+    expect(displayName(s, "c01")).toBe("Sir bBaob th");
+    expect(setNickname(s, "c01", "   ")).toBe("");
+    expect(displayName(s, "c01")).toBe("Bao");
+    expect(setNickname(s, "c01", "Émilie 2")).toBe("Émilie 2");
+  });
+});
+
+describe("save migration", () => {
+  it("fills new fields into an older save", () => {
+    const old = { version: 1, coins: 77, inventory: { c01: 1 }, stats: { boxesOpened: 3 }, parent: { pin: "1234" } };
+    const mem = new Map([["squishbox.save.v1", JSON.stringify(old)]]);
+    const s = loadState({ getItem: (k: string) => mem.get(k) ?? null });
+    expect(s.coins).toBe(77);
+    expect(s.pity).toBe(0);
+    expect(s.settings.sound).toBe(true);
+    expect(s.stats.boxesOpened).toBe(3);
+    expect(s.stats.coinsFromSales).toBe(0);
+    expect(s.parent.pin).toBe("1234");
+    expect(s.parent.dailyBoxCap).toBe(10);
+    expect(s.nicknames).toEqual({});
+  });
+});
