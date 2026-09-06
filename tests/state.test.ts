@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { BOXES } from "../src/data/boxes";
+import { mulberry32 } from "../src/game/rng";
+import { claimDaily, DAILY_COINS, loadState, newState, openBox, saveState, STARTING_COINS, STREAK_BONUS } from "../src/game/state";
+
+const day = (s: string) => new Date(`${s}T10:00:00`);
+
+describe("daily coins", () => {
+  it("grants once per calendar day", () => {
+    const s = newState();
+    expect(claimDaily(s, day("2026-09-06"))).toBe(DAILY_COINS);
+    expect(claimDaily(s, day("2026-09-06"))).toBe(0);
+    expect(s.coins).toBe(STARTING_COINS + DAILY_COINS);
+  });
+
+  it("builds a streak on consecutive days and resets after a gap", () => {
+    const s = newState();
+    claimDaily(s, day("2026-09-06"));
+    expect(claimDaily(s, day("2026-09-07"))).toBe(DAILY_COINS + STREAK_BONUS);
+    expect(s.streak).toBe(2);
+    expect(claimDaily(s, day("2026-09-10"))).toBe(DAILY_COINS);
+    expect(s.streak).toBe(1);
+  });
+});
+
+describe("opening boxes", () => {
+  const box = BOXES[0]!;
+
+  it("refuses when coins are short", () => {
+    const s = newState();
+    s.coins = box.price - 1;
+    expect(openBox(s, box, mulberry32(1), day("2026-09-06"))).toEqual({ ok: false, reason: "coins" });
+  });
+
+  it("charges, adds to inventory, flags new vs dupe", () => {
+    const s = newState();
+    s.coins = 1000;
+    const r1 = openBox(s, box, mulberry32(7), day("2026-09-06"));
+    expect(r1.ok && r1.isNew).toBe(true);
+    expect(s.coins).toBe(1000 - box.price);
+    expect(s.stats.boxesOpened).toBe(1);
+    expect(s.log[0]?.kind).toBe("open");
+  });
+
+  it("enforces the parent's daily box cap and resets next day", () => {
+    const s = newState();
+    s.coins = 10000;
+    s.parent.dailyBoxCap = 2;
+    const rng = mulberry32(3);
+    expect(openBox(s, box, rng, day("2026-09-06")).ok).toBe(true);
+    expect(openBox(s, box, rng, day("2026-09-06")).ok).toBe(true);
+    expect(openBox(s, box, rng, day("2026-09-06"))).toEqual({ ok: false, reason: "cap" });
+    expect(openBox(s, box, rng, day("2026-09-07")).ok).toBe(true);
+  });
+});
+
+describe("persistence", () => {
+  it("round-trips through storage and survives garbage", () => {
+    const mem = new Map<string, string>();
+    const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    const s = newState("Kid");
+    s.coins = 123;
+    saveState(storage, s);
+    expect(loadState(storage).coins).toBe(123);
+    expect(loadState(storage).playerName).toBe("Kid");
+    mem.set("squishbox.save.v1", "{not json");
+    expect(loadState(storage).coins).toBe(STARTING_COINS);
+    expect(loadState(null).coins).toBe(STARTING_COINS);
+  });
+});

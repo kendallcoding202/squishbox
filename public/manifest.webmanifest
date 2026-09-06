@@ -1,0 +1,10 @@
+{
+  "name": "Squishbox",
+  "short_name": "Squishbox",
+  "description": "Open steamer baskets, collect squishy dumplings, trade with friends.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff4e6",
+  "theme_color": "#fff4e6",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
