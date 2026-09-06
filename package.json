@@ -9,11 +9,21 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ios:add": "npm run build && npx cap add ios && npm run ios:assets",
+    "ios:assets": "npx @capacitor/assets generate --ios --iconBackgroundColor '#ffd166' --splashBackgroundColor '#fff4e6' --splashBackgroundColorDark '#fff4e6'",
+    "ios:sync": "npm run build && npx cap sync ios",
+    "ios:open": "npx cap open ios"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.1",
     "typescript": "^5.9.0",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1"
   }
 }

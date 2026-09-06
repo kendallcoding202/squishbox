@@ -35,6 +35,18 @@ The app is a mobile-first web page with a manifest, so it can be added to a phon
 
 Pushing to `main` runs the tests and publishes the app to `https://<user>.github.io/squishbox/`.
 
+## iOS app (TestFlight and App Store)
+
+The same code ships as a native iOS app through Capacitor. On a Mac with Xcode:
+
+```sh
+npm run ios:add     # first time: creates ios/ and generates icons + splash
+npm run ios:open    # opens Xcode; set your Team under Signing & Capabilities
+npm run ios:sync    # after every change: rebuild web and copy into ios/
+```
+
+Full walkthrough, App Store Connect fields, and Kids Category rules: [docs/APP_STORE.md](docs/APP_STORE.md).
+
 ## Layout
 
 ```
