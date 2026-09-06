@@ -65,7 +65,7 @@ Fill these in on the app record. All of them are required before "Submit for Rev
 | Age rating | Answer the questionnaire honestly; result should be 4+. Say **No** to "Unrestricted Web Access", "Gambling", and "Contests". Simulated gambling: **No** (no real stakes, odds shown, nothing cashable). |
 | Privacy policy URL | `https://kendallcoding202.github.io/squishbox/privacy.html` |
 | Support URL | `https://github.com/kendallcoding202/squishbox` (or any page you control) |
-| App Privacy | "Data Not Collected". Nothing leaves the device. |
+| App Privacy | With friend trading on, the app sends an anonymous id, a chosen basket name, and the inventory list to the trading post. Declare **User Content → Other User Content** and **Identifiers → User ID**, both "Not linked to you" and "Not used for tracking", purpose "App Functionality". If you ship with friend trading off, "Data Not Collected" is accurate. |
 | Screenshots | Ready-made in `store/screenshots/`: six per device at Apple's exact sizes (iPhone 6.9" 1320x2868, iPad 13" 2064x2752). Upload the `iphone69-*` set and the `ipad13-*` set. Regenerate after visual changes with the Playwright script described in the README. |
 | Description | See below. |
 | Keywords | dumpling, squishy, blind box, collect, trade, kids, mystery box |
@@ -88,7 +88,7 @@ Apple reviews Kids apps against guideline 1.3. Squishbox complies as built; keep
   not reachable from inside the app.
 - No purchases. If coin packs are ever added, they must be behind a parental gate and the odds
   disclosure must stay on every box (guideline 3.1.1).
-- Nothing collected from children (COPPA). The app has no network calls at all.
+- Nothing personal collected from children (COPPA). The only network calls go to the trading post, and only when a parent leaves friend trading on. See `docs/SERVER.md` for exactly what it receives.
 
 ## 7. Common first-review rejections and the fix
 

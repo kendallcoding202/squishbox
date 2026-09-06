@@ -1,5 +1,8 @@
 import "./style.css";
-import { clear, h } from "./ui/dom";
+import { clear, confetti, h, toast } from "./ui/dom";
+import { onNetChange, setDeliveryHandler, startSync } from "./net/sync";
+import { CHARACTER_BY_ID } from "./data/characters";
+import { success } from "./ui/sound";
 import { onCollectionRerender, renderCollection } from "./ui/screens/collection";
 import { onHomeRerender, renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
@@ -45,5 +48,12 @@ onCollectionRerender(render);
 onHomeRerender(render);
 onTradeRerender(render);
 onParentsRerender(render);
+setDeliveryHandler((partnerName, give, get) => {
+  const got = get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
+  toast(`Trade with ${partnerName} done! You got ${got}`);
+  success(); confetti(["#3fae7a", "#ffd23f", "#ff8f5e"], 50);
+});
+onNetChange(() => { if (current === "trade") render(); });
+startSync();
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1) as Tab; if (TABS.some((x) => x.id === t) && t !== current) go(t); });
 render();

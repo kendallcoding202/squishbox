@@ -16,7 +16,11 @@ export interface ParentSettings {
   tradingEnabled: boolean;
   /** Boxes a kid may open per calendar day. */
   dailyBoxCap: number;
+  /** Trading with real friends through the trading post (friend codes). */
+  onlineTrading: boolean;
 }
+
+export interface NetCredentials { playerId: string; token: string; code: string; name: string }
 
 export interface SaveState {
   version: 1;
@@ -40,6 +44,8 @@ export interface SaveState {
   shelf: string[];
   /** Series whose unlock celebration has already been shown. */
   celebrated: SeriesId[];
+  /** Trading post identity. Random id and token, a friend code, a chosen basket name. No personal data. */
+  net: NetCredentials | null;
 }
 
 export const STARTING_COINS = 50;
@@ -65,7 +71,7 @@ export function newState(playerName = "You"): SaveState {
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
-    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10 },
+    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10, onlineTrading: true },
     bots: {},
     settings: { sound: true },
     pity: 0,
@@ -74,7 +80,22 @@ export function newState(playerName = "You"): SaveState {
     onboarded: false,
     shelf: [],
     celebrated: [],
+    net: null,
   };
+}
+
+/** Apply a completed friend trade the trading post handed back. Never leaves counts below zero. */
+export function applyDelivery(state: SaveState, d: { partnerName: string; give: string[]; get: string[] }, now: number): void {
+  for (const id of d.give) {
+    const have = state.inventory[id] ?? 0;
+    if (have <= 1) continue; // spares only: the last copy never leaves, even if the snapshot was stale
+    state.inventory[id] = have - 1;
+  }
+  for (const id of d.get) if (CHARACTER_BY_ID.has(id)) state.inventory[id] = (state.inventory[id] ?? 0) + 1;
+  state.stats.tradesCompleted += 1;
+  const gave = d.give.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
+  const got = d.get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
+  log(state, "trade", `Traded ${gave} to ${d.partnerName} for ${got}`, now);
 }
 
 // ---- Series ----

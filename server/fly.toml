@@ -1,0 +1,36 @@
+# Squishbox trading post on Fly.io.
+# First deploy from your Mac, inside the repo:
+#   fly launch --config server/fly.toml --dockerfile server/Dockerfile --copy-config --no-deploy
+#   fly volumes create squishbox_data --size 1 --region <your region>
+#   fly deploy --config server/fly.toml --dockerfile server/Dockerfile
+app = "squishbox-api"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "8080"
+  DB_PATH = "/data/squishbox.db"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/health"
+
+[mounts]
+  source = "squishbox_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

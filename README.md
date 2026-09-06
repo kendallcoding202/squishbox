@@ -13,7 +13,8 @@ This is a **retention experiment**, not a product. The question it exists to ans
 - **Collection.** 30 procedurally drawn dumplings (Series 1, "Steamer Pals") across four body shapes and five patterns. Owned ones are squishable; unowned ones show as silhouettes. Kids can give each one a nickname.
 - **Steam Pot.** Sell spare dumplings for coins, always keeping the last copy. This is the in-app resale, in coins only.
 - **Album goals.** Coin rewards for completing each rarity set and the whole album.
-- **Trade.** Four neighbor bots stand in for real friends and use the same trade engine a real friend would. Rules:
+- **Trade with friends.** Each kid gets a friend code like `TARO-71`. Add a friend by code, then trade through the trading post server in `server/` with the same escrow rules as below. Parents can switch it off. See [docs/SERVER.md](docs/SERVER.md).
+- **Trade with neighbors.** Five neighbor bots use the same trade engine, so there's always someone to trade with. Rules:
   1. Atomic swap. Nobody gives first.
   2. Any change to either side clears both confirmations, so there is no last-second swap.
   3. A 3-second "read it over" cooldown after every change before Confirm unlocks.
@@ -22,7 +23,7 @@ This is a **retention experiment**, not a product. The question it exists to ans
   6. Kids can only trade spares. Everyone keeps one of everything.
 - **Parent corner.** PIN-gated. Activity stats, a full log, a trading on/off switch, a boxes-per-day cap, and a reset.
 
-Everything is stored in the browser's local storage. Nothing leaves the device.
+Everything is stored in the browser's local storage. With friend trading on, the trading post receives an anonymous id, a chosen basket name, and the inventory list, and nothing else.
 
 ## Run it
 
@@ -76,7 +77,7 @@ tests/                   vitest
 ## Things deliberately left out
 
 - Real money and cash-out. Random paid boxes plus resale is what regulators treat as gambling for minors.
-- Accounts, servers, and any data collection. Adding those means COPPA, so they wait until the retention question is answered.
+- Accounts and personal data. Friend trading uses random ids and made-up names only.
 - Physical toys. If the characters get a following, that is a licensing conversation, not a manufacturing one.
 
 ## Store screenshots

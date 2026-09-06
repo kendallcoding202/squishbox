@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BOXES } from "../src/data/boxes";
 import { CHARACTER_BY_ID, charactersInSeries } from "../src/data/characters";
 import { mulberry32 } from "../src/game/rng";
-import { claimReward, loadState, luckyNext, newState, openBox, PITY_AT, REWARDS, rewardStatus, SELL_VALUE, sellSpare, setNickname, displayName } from "../src/game/state";
+import { applyDelivery, claimReward, loadState, luckyNext, newState, openBox, PITY_AT, REWARDS, rewardStatus, SELL_VALUE, sellSpare, setNickname, displayName } from "../src/game/state";
 
 const day = new Date("2026-09-06T10:00:00");
 const steamer = BOXES[0]!;
@@ -116,5 +116,22 @@ describe("save migration", () => {
     expect(s.parent.pin).toBe("1234");
     expect(s.parent.dailyBoxCap).toBe(10);
     expect(s.nicknames).toEqual({});
+  });
+});
+
+describe("friend trade deliveries", () => {
+  it("moves items, keeps the last copy, ignores unknown ids, and logs", () => {
+    const s = newState();
+    s.inventory = { c01: 2, c02: 1 };
+    applyDelivery(s, { partnerName: "Ada", give: ["c01", "c02"], get: ["r01", "zzz"] }, 5);
+    expect(s.inventory).toEqual({ c01: 1, c02: 1, r01: 1 });
+    expect(s.stats.tradesCompleted).toBe(1);
+    expect(s.log[0]?.text).toContain("Ada");
+  });
+  it("older saves get onlineTrading on and no net identity", () => {
+    const mem = new Map([["squishbox.save.v1", JSON.stringify({ version: 1, parent: { pin: null } })]]);
+    const s = loadState({ getItem: (k: string) => mem.get(k) ?? null });
+    expect(s.parent.onlineTrading).toBe(true);
+    expect(s.net).toBeNull();
   });
 });
