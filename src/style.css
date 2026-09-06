@@ -159,3 +159,34 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .stat b { display: block; font-size: 22px; }
 .stat span { font-size: 12px; color: var(--muted); }
 .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 999px; font-weight: 800; font-size: 14px; z-index: 40; animation: fade 0.2s ease; white-space: nowrap; }
+
+/* ---- tablet layout (iPad and up): use the width instead of a phone column ---- */
+.shop-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.shop-grid .card + .card { margin-top: 0; }
+.neighbors { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.neighbors .card + .card { margin-top: 0; }
+@media (min-width: 700px) {
+  body { font-size: 17px; }
+  #app, .nav-inner { max-width: 960px; }
+  .screen { padding-left: 28px; padding-right: 28px; padding-top: 24px; }
+  h1 { font-size: 32px; }
+  h2 { font-size: 21px; }
+  .shop-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: stretch; }
+  .box-card { display: flex; flex-direction: column; }
+  .box-card .odds { flex: 1; align-content: start; }
+  .box-card .emoji { font-size: 52px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .tile > .dumpling { width: 116px !important; height: 116px !important; }
+  .tile .name { font-size: 15px; }
+  .neighbors { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .picker { grid-template-columns: repeat(6, 1fr); }
+  .sheet { max-width: 520px; }
+  .reveal-stage { height: 300px; }
+  .trade-item { width: 72px; }
+  .nav button { font-size: 13px; }
+  .nav button .ico { font-size: 26px; }
+  .stats { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 700px) and (max-width: 899px) {
+  .shop-grid { grid-template-columns: repeat(2, 1fr); }
+}

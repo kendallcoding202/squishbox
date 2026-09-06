@@ -175,7 +175,7 @@ export function renderTrade(): HTMLElement {
           );
         })),
     h("h2", null, "Neighbors"),
-    ...BOTS.map((bot) => {
+    h("div", { class: "neighbors" }, ...BOTS.map((bot) => {
       const inv = store.botInventory(bot.id);
       const sp = spares(inv);
       const preview = sp.slice(0, 4).map(([id]) => dumplingEl(CHARACTER_BY_ID.get(id) as Character, 36));
@@ -184,6 +184,6 @@ export function renderTrade(): HTMLElement {
         h("div", { class: "grow" }, h("b", null, bot.name), h("div", { class: "small muted" }, `${sp.length} spares · ${Object.keys(inv).length} of ${CHARACTERS.length} collected`), h("div", { class: "row", style: "gap:2px;margin-top:4px" }, ...preview)),
         h("button", { class: "btn sm secondary", onclick: () => openWith(bot) }, "Trade"),
       );
-    }),
+    })),
   );
 }

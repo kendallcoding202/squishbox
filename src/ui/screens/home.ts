@@ -133,6 +133,6 @@ export function renderHome(): HTMLElement {
     ) : null,
     h("h2", null, "Shop"),
     h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box. Coins are free: no real money in this prototype."),
-    ...BOXES.map(boxCard),
+    h("div", { class: "shop-grid" }, ...BOXES.map(boxCard)),
   );
 }
