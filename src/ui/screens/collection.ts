@@ -1,5 +1,6 @@
 import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type Rarity, type SeriesId } from "../../data/characters";
-import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems } from "../../game/state";
+import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems, chooseBuddy, setBuddyAside} from "../../game/state";
+import { nextMilestone, reached } from "../../game/buddy";
 import { confetti, h, onTap, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic } from "../sound";
@@ -50,6 +51,26 @@ export function detail(c: Character): void {
       swap();
     } }, shelved ? "Take off shelf" : "⭐ Put on shelf");
 
+    const isBuddy = s.buddy?.characterId === c.id;
+
+    // What turning up has actually earned. Only shown for the buddy, and only once there is
+    // something to show — an empty "nothing yet" list would read as a chore list.
+    const b = isBuddy ? s.buddy : null;
+    const done = b ? reached(b) : [];
+    const upcoming = b ? nextMilestone(b) : null;
+    const milestones = b && done.length ? h("div", { class: "card", style: "margin-top:14px;text-align:left" },
+      h("h3", null, `What ${displayName(s, c.id)} has learned`),
+      h("ul", { class: "milestones" }, ...done.map((m) => h("li", null, h("span", null, "✓"), h("span", null, m.label)))),
+      upcoming ? h("p", { class: "muted small", style: "margin-top:8px" }, `Next: something new in ${upcoming.visits - b.visits} more day${upcoming.visits - b.visits > 1 ? "s" : ""}.`) : null,
+    ) : null;
+
+    const buddyBtn = s.parent.buddyEnabled ? h("button", { class: "btn sm" + (isBuddy ? " secondary" : ""), onclick: () => {
+      store.update((st) => { if (isBuddy) setBuddyAside(st, new Date()); else chooseBuddy(st, c.id, new Date()); });
+      haptic("light");
+      toast(isBuddy ? `${c.name} went back in the basket` : `${c.name} is your buddy!`);
+      swap();
+    } }, isBuddy ? "Not my buddy any more" : "\u{1F49B} Make my buddy") : null;
+
     return h("div", { class: "sheet" },
       h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true, fullSquish: true })),
       h("h2", { style: "margin-top:4px" }, nick ?? c.name),
@@ -57,7 +78,8 @@ export function detail(c: Character): void {
       h("p", { class: "muted", style: "margin-top:10px" }, c.flavor),
       h("p", { class: "muted small", style: "margin-top:6px" }, "Press and drag to squish!"),
       h("div", { class: "row", style: "margin-top:14px;gap:8px" }, nameInput, h("button", { class: "btn sm", onclick: saveNick }, "Name")),
-      h("div", { style: "margin-top:10px" }, shelfBtn),
+      h("div", { class: "row", style: "margin-top:10px;gap:8px;justify-content:center;flex-wrap:wrap" }, shelfBtn, buddyBtn),
+      milestones,
       h("div", { class: "row between", style: "margin-top:12px" },
         h("div", { class: "small muted grow", style: "text-align:left" }, count >= 2 ? `You have ${count - 1} spare${count > 2 ? "s" : ""}. The Steam Pot pays ${sellValue(c.id)} coins each.` : "Get a second one to trade or sell it."),
         sellBtn,

@@ -236,6 +236,11 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
    Last in the file on purpose: the tablet block above matches on width alone, so a
    landscape phone (>=700px wide, ~390px tall) would otherwise get the iPad's 300px
    stage and push Done / Open another off the bottom of the screen. */
+/* The buddy's earned tricks. Ticks, not checkboxes: these are already done, never a to-do list. */
+.milestones { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.milestones li { display: flex; gap: 8px; align-items: baseline; font-size: 15px; }
+.milestones li span:first-child { color: var(--good); font-weight: 800; }
+
 @media (max-height: 560px) {
   .sheet { padding: 14px 16px; }
   .reveal-stage { height: 150px; }
@@ -301,3 +306,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
    left the kid somewhere else in the list. */
 .overlay { overscroll-behavior: contain; }
 .sheet { overscroll-behavior: contain; }
+
+/* ---- buddy ----
+   Sits at the top of the home screen: the first thing a kid sees on opening the app is the
+   dumpling they look after, and one line about something good it got up to. */
+.buddy-card { border: 2px solid var(--accent); }
+.buddy-card h3 { font-size: 18px; }

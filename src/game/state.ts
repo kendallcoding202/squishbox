@@ -1,5 +1,6 @@
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
+import { newBuddy, recordVisit, type BuddyState } from "./buddy";
 import { PITY_AT, rollBox } from "./odds";
 import type { Rng } from "./rng";
 
@@ -7,7 +8,7 @@ export type Inventory = Record<string, number>;
 
 export interface LogEntry {
   t: number;
-  kind: "daily" | "open" | "trade" | "parent" | "sell" | "reward";
+  kind: "daily" | "open" | "trade" | "parent" | "sell" | "reward" | "buddy";
   text: string;
 }
 
@@ -18,6 +19,8 @@ export interface ParentSettings {
   dailyBoxCap: number;
   /** Trading with real friends through the trading post (friend codes). */
   onlineTrading: boolean;
+  /** Looking after a buddy. On by default: it collects nothing and cannot punish a child. */
+  buddyEnabled: boolean;
 }
 
 export interface NetCredentials { playerId: string; token: string; code: string; name: string }
@@ -35,6 +38,8 @@ export interface SaveState {
   unlockedSeries: SeriesId[];
   /** Delivery ids already applied, so a retried sync cannot grant the same trade twice. */
   appliedDeliveries: number[];
+  /** The dumpling the kid looks after, if they've chosen one. Nothing here ever decays. */
+  buddy: BuddyState | null;
   boxesToday: { day: string; count: number };
   stats: { boxesOpened: number; coinsEarned: number; coinsSpent: number; tradesCompleted: number; tradesDeclined: number; coinsFromSales: number };
   log: LogEntry[];
@@ -77,12 +82,13 @@ export function newState(playerName = "You"): SaveState {
     clockHighWater: 0,
     unlockedSeries: [],
     appliedDeliveries: [],
+    buddy: null,
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
     // Online trading is off until a grown-up turns it on: nothing leaves the device by default,
     // and no server identity is created before a parent has had any say.
-    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10, onlineTrading: false },
+    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10, onlineTrading: false, buddyEnabled: true },
     bots: {},
     settings: { sound: true },
     pity: 0,
@@ -184,6 +190,43 @@ export function takeNewUnlocks(state: SaveState): SeriesId[] {
   return fresh;
 }
 
+// ---- Buddy ----
+
+/**
+ * Choose (or change) the dumpling the kid looks after. Only one at a time, and only one
+ * they own. Changing buddy keeps nothing: the new buddy starts its own history, and the
+ * old one simply goes back to being a dumpling in the basket. Nothing is lost or punished.
+ */
+export function chooseBuddy(state: SaveState, characterId: string, now: Date): boolean {
+  if (!CHARACTER_BY_ID.has(characterId)) return false;
+  if ((state.inventory[characterId] ?? 0) < 1) return false;
+  if (state.buddy?.characterId === characterId) return false;
+  state.buddy = newBuddy(characterId, effectiveNow(state, now).getTime());
+  log(state, "buddy", `${CHARACTER_BY_ID.get(characterId)?.name} is my buddy now`, now.getTime());
+  return true;
+}
+
+export function setBuddyAside(state: SaveState, now: Date): void {
+  const name = state.buddy ? CHARACTER_BY_ID.get(state.buddy.characterId)?.name : null;
+  state.buddy = null;
+  if (name) log(state, "buddy", `${name} went back in the basket`, now.getTime());
+}
+
+/**
+ * Count today's visit. True when it's the first of a new day, which is when the kid is
+ * shown what the buddy got up to. Uses the same forward-only clock as everything else, so
+ * winding the device back cannot farm extra visits.
+ */
+export function visitBuddy(state: SaveState, now: Date, pick: number): boolean {
+  if (!state.buddy) return false;
+  const today = effectiveNow(state, now);
+  // A buddy that has been sold or traded away stops being the buddy, quietly.
+  if ((state.inventory[state.buddy.characterId] ?? 0) < 1) { state.buddy = null; return false; }
+  const first = recordVisit(state.buddy, dayKey(today), pick);
+  if (first) markClockSeenExported(state, today);
+  return first;
+}
+
 // ---- Shelf ----
 
 export function onShelf(state: SaveState, characterId: string): boolean {
@@ -233,6 +276,7 @@ export function effectiveNow(state: SaveState, wall: Date): Date {
   return wall.getTime() < high ? new Date(high) : wall;
 }
 
+function markClockSeenExported(state: SaveState, now: Date): void { markClockSeen(state, now); }
 function markClockSeen(state: SaveState, now: Date): void {
   const ms = now.getTime();
   if (!Number.isFinite(state.clockHighWater) || ms > state.clockHighWater) state.clockHighWater = ms;

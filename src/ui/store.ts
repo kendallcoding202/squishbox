@@ -12,6 +12,7 @@ class Store {
   state: SaveState = loadState(storage());
   private listeners = new Set<Listener>();
   private saveBroken = false;
+  private notifying = false;
   private onSaveFail: (() => void) | null = null;
 
   /** Told once, the first time the collection fails to reach disk. */
@@ -29,7 +30,19 @@ class Store {
   update(fn: (s: SaveState) => void): void {
     fn(this.state);
     this.write();
-    for (const l of this.listeners) l(this.state);
+    // A listener that calls update() again recurses forever, and the only symptom a child sees
+    // is a blank screen. Drop the re-entrant notify instead: the state and the save are already
+    // correct, and the render in progress will show them. Use persist() to avoid this entirely.
+    if (this.notifying) {
+      if (import.meta.env.DEV) console.warn("store.update() called during a render; use persist() instead");
+      return;
+    }
+    this.notifying = true;
+    try {
+      for (const l of this.listeners) l(this.state);
+    } finally {
+      this.notifying = false;
+    }
   }
 
   /** Save without notifying listeners. For bookkeeping done during a render. */

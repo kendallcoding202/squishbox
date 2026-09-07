@@ -1,11 +1,11 @@
 import { boxesInSeries, BOXES, type Box } from "../../data/boxes";
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type SeriesId } from "../../data/characters";
+import { momentText, nextMilestone, reached } from "../../game/buddy";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
   boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
-  markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult,
-} from "../../game/state";
+  markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
 import { confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
 import { dumplingEl } from "../dumpling";
@@ -14,6 +14,8 @@ import { store } from "../store";
 
 let shopSeries: SeriesId = "s1";
 let celebrationTimer = 0;
+/** What the buddy got up to, shown on the first open of a day. */
+let buddyGreeting: string | null = null;
 let rerender: () => void = () => {};
 export function onHomeRerender(fn: () => void): void { rerender = fn; }
 
@@ -224,6 +226,53 @@ function celebrateUnlock(id: SeriesId): void {
   ));
 }
 
+/**
+ * The buddy card, first thing on the home screen.
+ *
+ * On the first open of a day it says what the buddy got up to. That line is the whole
+ * return hook, and it is always something good that happened or something saved for the
+ * kid — never that the buddy was sad, lonely or waiting. Coming back is a welcome, not
+ * an apology.
+ */
+function buddySection(): HTMLElement | null {
+  const s = store.state;
+  if (!s.parent.buddyEnabled) return null;
+  const b = s.buddy;
+
+  if (!b) {
+    if (ownedCount(s.inventory) === 0) return null; // nothing to look after yet
+    return h("div", null,
+      h("h2", null, "My buddy"),
+      h("div", { class: "card" },
+        h("p", { class: "muted small" }, "Pick a dumpling to look after. Tap one in your Collection and choose \u201cMake my buddy\u201d."),
+      ),
+    );
+  }
+
+  const c = CHARACTER_BY_ID.get(b.characterId);
+  if (!c) return null;
+  const next = nextMilestone(b);
+  const done = reached(b);
+  const art = dumplingEl(c, 96, { idle: true });
+  const card = h("div", { class: "card buddy-card tappable", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}, open details` },
+    h("div", { class: "row", style: "gap:14px;align-items:center" },
+      art,
+      h("div", { class: "grow" },
+        h("h3", null, displayName(s, c.id)),
+        h("p", { class: "muted small", style: "margin-top:2px" },
+          buddyGreeting ? `${displayName(s, c.id)} ${buddyGreeting}.` : "Give them a squish."),
+        h("p", { class: "small", style: "margin-top:8px;font-weight:800;color:var(--good)" },
+          done.length ? `${done.length} thing${done.length > 1 ? "s" : ""} learned` : "just settling in"),
+        next
+          ? h("p", { class: "muted small" }, `${next.visits - b.visits} more day${next.visits - b.visits > 1 ? "s" : ""} until something new`)
+          : h("p", { class: "muted small" }, "knows every trick there is"),
+      ),
+    ),
+  );
+  onTap(card, () => detail(c));
+  return h("div", null, h("h2", null, "My buddy"), card);
+}
+
 function shelfSection(): HTMLElement {
   const s = store.state;
   const items = s.shelf.map((id) => CHARACTER_BY_ID.get(id)).filter(Boolean) as Character[];
@@ -261,6 +310,20 @@ export function renderHome(): HTMLElement {
   const owned = ownedCount(s.inventory);
 
   if (!s.onboarded && !document.querySelector(".overlay")) setTimeout(welcome, 50);
+
+  // First open of the day: the buddy has something to show for it.
+  // Never store.update() here — we are inside a render, update() notifies listeners, and the
+  // listener re-enters this function: that is an unbounded recursion, not a double render.
+  // Mutating state and calling persist() saves without notifying. (The unlock check below
+  // gets away with update() only because it is deferred into a timer.)
+  if (s.buddy && s.parent.buddyEnabled) {
+    const pick = Math.floor(Math.random() * 9973);
+    if (visitBuddy(s, new Date(), pick)) {
+      store.persist();
+      if (s.buddy) buddyGreeting = momentText(s.buddy);
+    }
+  }
+
   // Only spend the celebration once it is really on screen. startOpen mutates the store
   // before it builds the reveal sheet, so at this instant "no overlay" can still mean one
   // is about to appear — hence the second check when the timer fires.
@@ -300,6 +363,7 @@ export function renderHome(): HTMLElement {
     h("div", { class: "topbar" }, h("h1", null, "Squishbox"), h("div", { class: "row", style: "gap:8px" }, soundToggle(), coinsPill())),
     h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today${soundEnabled() ? "" : " · sound off"}`),
     daily,
+    buddySection(),
     shelfSection(),
     recentChars.length ? h("div", null,
       h("h2", null, "Fresh from the steamer"),
