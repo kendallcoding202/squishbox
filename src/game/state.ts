@@ -1,6 +1,6 @@
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
-import { rollBox } from "./odds";
+import { PITY_AT, rollBox } from "./odds";
 import type { Rng } from "./rng";
 
 export type Inventory = Record<string, number>;
@@ -53,8 +53,8 @@ export const DAILY_COINS = 20;
 export const STREAK_BONUS = 5; // per consecutive day, capped
 export const STREAK_CAP = 5;
 export const LOG_LIMIT = 200;
-/** Lucky meter: the PITY_AT-th box since the last Rare-or-better is guaranteed Rare or better. */
-export const PITY_AT = 10;
+// Lives in odds.ts so the published odds can account for it; re-exported here where callers expect it.
+export { PITY_AT };
 /** Coins paid by the Steam Pot for one spare, by rarity. */
 export const SELL_VALUE: Record<Rarity, number> = { common: 2, uncommon: 5, rare: 15, epic: 40, legendary: 120 };
 export const NICKNAME_MAX = 12;

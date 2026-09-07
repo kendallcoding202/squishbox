@@ -43,7 +43,7 @@ export function renderParents(): HTMLElement {
   return h("div", { class: "screen" },
     h("div", { class: "topbar" }, h("h1", null, "Parent corner"), h("button", { class: "btn ghost sm", onclick: () => { unlocked = false; rerender(); } }, "Lock")),
     h("div", { class: "card" },
-      h("h3", null, "About this prototype"),
+      h("h3", null, "About Squishbox"),
       h("p", { class: "muted small", style: "margin-top:6px" }, "There is no real money in Squishbox. Coins are free: once a day, from album goals, and from selling spare dumplings to the Steam Pot for coins. Every box shows its odds before opening, and a Rare or better is guaranteed every 10 boxes. Trades swap both sides at once and can't be changed after confirming. Trading with friends uses a basket code and a made-up basket name; the only things sent to the trading post are that name, an anonymous id, and the list of dumplings owned."),
     ),
     h("h2", null, "Activity"),

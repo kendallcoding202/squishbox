@@ -299,7 +299,7 @@ export function renderHome(): HTMLElement {
       })),
     ) : null,
     h("h2", null, "Shop"),
-    h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box. Coins are free: no real money in this prototype."),
+    h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box, and they count the lucky meter. Coins are free: there is no real money in Squishbox."),
     seriesTabs(),
     seriesUnlocked(s, shopSeries) ? h("div", { class: "shop-grid" }, ...boxesInSeries(shopSeries).map(boxCard)) : teaser(shopSeries),
     h("h2", null, "Progress"),
