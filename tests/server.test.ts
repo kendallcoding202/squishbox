@@ -5,7 +5,9 @@ import { COOLDOWN_MS } from "../src/game/trade";
 
 let base = "";
 let clock = 1_000_000_000_000;
-const server = createServer(":memory:", () => clock);
+// Generous register/write limits so the suite isn't fighting the throttle; the friend limit
+// stays at its real value because one of the tests is about exactly that.
+const server = createServer(":memory:", () => clock, { registerPerHour: 1000, friendPerMinute: 10, writesPerMinute: 1000 });
 
 beforeAll(async () => {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
@@ -28,7 +30,8 @@ describe("trading post", () => {
 
     const ada = (await call("POST", "/v1/register", undefined, { name: "Ada's Basket" })).json;
     const ben = (await call("POST", "/v1/register", undefined, { name: "<b>Ben</b>" })).json;
-    expect(ada.code).toMatch(/^[A-Z]+-\d{2}$/);
+    // WORD-NNNN, not the old WORD-NN: two digits made the whole population walkable.
+    expect(ada.code).toMatch(/^[A-Z]+-\d{4}$/);
     expect(ben.name).toBe("bBenb");
     expect((await call("GET", "/v1/me")).status).toBe(401);
 
@@ -101,5 +104,46 @@ describe("trading post", () => {
     expect((await call("GET", "/v1/trades/00000000-0000-0000-0000-000000000000", p.token)).status).toBe(404);
     const res = await fetch(base + "/v1/register", { method: "POST", body: "{bad" });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("the trading post does not mint dumplings", () => {
+  it("refuses to execute a trade that would take a player's last copy", async () => {
+    // Ada offers a spare, then the spare goes elsewhere before both sides confirm.
+    // The offer check required a spare; execute only required ownership, and the device's
+    // own keep-one guard then absorbed the decrement, so two became three.
+    const ada = (await call("POST", "/v1/register", undefined, { name: "Ada" })).json;
+    const ben = (await call("POST", "/v1/register", undefined, { name: "Ben" })).json;
+    await call("PUT", "/v1/inventory", ada.token, { inventory: { c01: 2 } });
+    await call("PUT", "/v1/inventory", ben.token, { inventory: { c02: 2 } });
+    await call("POST", "/v1/friends", ada.token, { code: ben.code });
+
+    const trade = (await call("POST", "/v1/trades", ada.token, { friendId: ben.playerId })).json;
+    expect((await call("PUT", `/v1/trades/${trade.id}/offer`, ada.token, { items: ["c01"] })).status).toBe(200);
+    expect((await call("PUT", `/v1/trades/${trade.id}/offer`, ben.token, { items: ["c02"] })).status).toBe(200);
+
+    // Ada sells the spare in the meantime: down to her last c01.
+    await call("PUT", "/v1/inventory", ada.token, { inventory: { c01: 1 } });
+
+    clock += COOLDOWN_MS + 100;
+    await call("POST", `/v1/trades/${trade.id}/confirm`, ada.token);
+    const second = await call("POST", `/v1/trades/${trade.id}/confirm`, ben.token);
+    expect(second.status).toBe(409); // reopened, not executed
+    const me = (await call("GET", "/v1/me", ada.token)).json;
+    expect(me.deliveries.length).toBe(0); // nothing was handed over
+  });
+});
+
+describe("guessing friend codes is not worth doing", () => {
+  it("stops a client that sprays addFriend", async () => {
+    const attacker = (await call("POST", "/v1/register", undefined, { name: "Nosy" })).json;
+    let refusedAt = -1;
+    for (let i = 0; i < 40; i++) {
+      const r = await call("POST", "/v1/friends", attacker.token, { code: `BAO-${1000 + i}` });
+      if (r.status === 429) { refusedAt = i; break; }
+    }
+    // 404s for misses are fine; what matters is that the sweep gets cut off quickly.
+    expect(refusedAt).toBeGreaterThan(0);
+    expect(refusedAt).toBeLessThan(30);
   });
 });

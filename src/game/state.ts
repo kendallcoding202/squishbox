@@ -33,6 +33,8 @@ export interface SaveState {
   clockHighWater: number;
   /** Series the collection has earned. Latched, so a shrinking collection can't take one back. */
   unlockedSeries: SeriesId[];
+  /** Delivery ids already applied, so a retried sync cannot grant the same trade twice. */
+  appliedDeliveries: number[];
   boxesToday: { day: string; count: number };
   stats: { boxesOpened: number; coinsEarned: number; coinsSpent: number; tradesCompleted: number; tradesDeclined: number; coinsFromSales: number };
   log: LogEntry[];
@@ -74,6 +76,7 @@ export function newState(playerName = "You"): SaveState {
     streak: 0,
     clockHighWater: 0,
     unlockedSeries: [],
+    appliedDeliveries: [],
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
@@ -92,8 +95,21 @@ export function newState(playerName = "You"): SaveState {
   };
 }
 
-/** Apply a completed friend trade the trading post handed back. Never leaves counts below zero. */
-export function applyDelivery(state: SaveState, d: { partnerName: string; give: string[]; get: string[] }, now: number): void {
+/**
+ * Apply a completed friend trade the trading post handed back. Never leaves counts below zero.
+ *
+ * Returns false when this delivery was already applied. The sync loop applies first and acks
+ * second, so an ack that never lands — the trading post idles its machine down, and a cold
+ * start beats the client's 8s timeout — leaves the delivery unacked and the server hands it
+ * back on the next pass, every 20 seconds, granting the same dumplings each time.
+ */
+export function applyDelivery(state: SaveState, d: { id?: number; partnerName: string; give: string[]; get: string[] }, now: number): boolean {
+  if (typeof d.id === "number") {
+    if (state.appliedDeliveries.includes(d.id)) return false;
+    state.appliedDeliveries.push(d.id);
+    // the server only ever replays unacked ones; a short tail is plenty
+    if (state.appliedDeliveries.length > 200) state.appliedDeliveries.splice(0, state.appliedDeliveries.length - 200);
+  }
   for (const id of d.give) {
     const have = state.inventory[id] ?? 0;
     if (have <= 1) continue; // spares only: the last copy never leaves, even if the snapshot was stale
@@ -105,6 +121,7 @@ export function applyDelivery(state: SaveState, d: { partnerName: string; give: 
   const gave = d.give.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
   const got = d.get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
   log(state, "trade", `Traded ${gave} to ${d.partnerName} for ${got}`, now);
+  return true;
 }
 
 // ---- Series ----
@@ -425,6 +442,7 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
         }
         merged.shelf = merged.shelf.filter((id) => CHARACTER_BY_ID.has(id));
         if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
+        if (!Array.isArray(merged.appliedDeliveries)) merged.appliedDeliveries = [];
         latchUnlocks(merged); // saves from before the latch: bank what the collection already earns
         if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
         if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;

@@ -8,7 +8,7 @@
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { canConfirm, confirm, createTrade, execute, owns, setOffer, type SideKey, type Trade } from "../src/game/trade";
+import { canConfirm, confirm, createTrade, execute, ownsSpares, setOffer, type SideKey, type Trade } from "../src/game/trade";
 import type { Inventory } from "../src/game/state";
 
 const NAME_MAX = 12;
@@ -107,13 +107,25 @@ export class TradingPost {
     return this.db.prepare("SELECT * FROM players WHERE id = ?").get(id) as PlayerRow | undefined;
   }
 
+  /**
+   * A friend code a child can read aloud, out of a space too big to walk.
+   *
+   * WORD-NN was 60 x 90 = 5,400 codes. addFriend is an oracle (404 on a miss, the player's
+   * name on a hit) so the whole population could be enumerated in one pass, and the finder
+   * became a mutual friend of every child without their say. WORD-NNNN is 540,000, and
+   * addFriend is rate limited, which together turn a minutes-long sweep into a pointless one.
+   * Codes come from randomBytes, not Math.random, so they cannot be predicted from each other.
+   */
   private newCode(): string {
     for (let i = 0; i < 50; i++) {
-      const w = WORDS[Math.floor(Math.random() * WORDS.length)] as string;
-      const code = `${w}-${String(10 + Math.floor(Math.random() * 90))}`;
+      const w = WORDS[randomBytes(1)[0]! % WORDS.length] as string;
+      const n = 1000 + (randomBytes(2).readUInt16BE(0) % 9000);
+      const code = `${w}-${n}`;
       if (!this.db.prepare("SELECT 1 FROM players WHERE code = ?").get(code)) return code;
     }
-    return `${WORDS[0]}-${randomBytes(2).toString("hex").toUpperCase()}`;
+    // Space is 540k against a friends-and-family population; 50 collisions means something
+    // is very wrong, so fall back to something unmistakably unique rather than a 500.
+    return `${WORDS[0]}-${randomBytes(4).toString("hex").toUpperCase()}`;
   }
 
   register(body: { name?: unknown }): { playerId: string; token: string; code: string; name: string } {
@@ -183,6 +195,21 @@ export class TradingPost {
     return { id: other.id, name: other.name, code: other.code, lastSeen: other.last_seen };
   }
 
+  /**
+   * Remove a friend, both ways, and close anything open between them.
+   *
+   * There was no way out of a friendship at all: addFriend inserts both directions with no
+   * say from the person being added, so anyone who had your code was in your list for good.
+   * A child needs to be able to undo that without an adult filing a support ticket.
+   */
+  removeFriend(token: string | null, friendId: string): { ok: true } {
+    const p = this.player(token);
+    this.db.prepare("DELETE FROM friends WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)").run(p.id, friendId, friendId, p.id);
+    this.db.prepare("UPDATE trades SET status = 'declined' WHERE status IN ('open','locked') AND ((a = ? AND b = ?) OR (a = ? AND b = ?))")
+      .run(p.id, friendId, friendId, p.id);
+    return { ok: true };
+  }
+
   createTrade(token: string | null, body: { friendId?: unknown }): Trade {
     const p = this.player(token);
     const friendId = String(body.friendId ?? "");
@@ -242,7 +269,12 @@ export class TradingPost {
       if (!pa || !pb) throw new HttpError(500, "player vanished");
       const invA = JSON.parse(pa.inventory) as Inventory;
       const invB = JSON.parse(pb.inventory) as Inventory;
-      if (!owns(invA, next.a.items) || !owns(invB, next.b.items)) {
+      // Spares at execute, not just ownership. The offer already required a spare, but the
+      // snapshot can shrink in between (a Steam Pot sale, a second trade agreed in parallel),
+      // and owns() is happy with the last copy. That gap minted dumplings: two open trades on
+      // one spare both passed here, and the device's own keep-one guard absorbed the second
+      // decrement, so 2 became 3.
+      if (!ownsSpares(invA, next.a.items) || !ownsSpares(invB, next.b.items)) {
         // Someone no longer has the goods: reopen for editing rather than fail silently.
         next = setOffer({ ...next, status: "open" }, side, next[side].items, this.now());
         this.saveTrade(next);
@@ -285,6 +317,42 @@ export class TradingPost {
   }
 }
 
+
+// ---- rate limiting ----
+
+/**
+ * A fixed-window counter, in memory, per key.
+ *
+ * The whole friend-code space used to be walkable in one unthrottled pass, which is how a
+ * stranger could become every child's friend. Register is unauthenticated so it is limited by
+ * client address; the rest by player, which is what an attacker would have to burn to guess.
+ * One machine holds the whole service (a single Fly volume), so process memory is the right
+ * place for this — if that ever changes this has to move with it.
+ */
+class RateLimiter {
+  private hits = new Map<string, { n: number; resets: number }>();
+  constructor(private limit: number, private windowMs: number, private now: () => number = () => Date.now()) {}
+
+  /** True when the caller is inside its allowance. */
+  take(key: string): boolean {
+    const t = this.now();
+    const cur = this.hits.get(key);
+    if (!cur || t >= cur.resets) {
+      if (this.hits.size > 10000) this.sweep(t); // keep the map from growing without bound
+      this.hits.set(key, { n: 1, resets: t + this.windowMs });
+      return true;
+    }
+    cur.n += 1;
+    return cur.n <= this.limit;
+  }
+
+  private sweep(t: number): void {
+    for (const [k, v] of this.hits) if (t >= v.resets) this.hits.delete(k);
+  }
+}
+
+const MINUTE = 60_000;
+
 // ---- http ----
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -300,8 +368,25 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   catch { throw new HttpError(400, "invalid JSON"); }
 }
 
-export function createServer(dbPath: string, now?: () => number) {
+export interface ServerLimits {
+  /** New players per client address. Households share one, so this is per hour, not per minute. */
+  registerPerHour: number;
+  /** Friend-code attempts per player per minute. The enumeration surface, so the tightest. */
+  friendPerMinute: number;
+  /** Inventory writes per player per minute; also caps the disk-fill route. */
+  writesPerMinute: number;
+}
+
+const DEFAULT_LIMITS: ServerLimits = { registerPerHour: 20, friendPerMinute: 10, writesPerMinute: 120 };
+
+export function createServer(dbPath: string, now?: () => number, limits: ServerLimits = DEFAULT_LIMITS) {
   const post = new TradingPost(openDb(dbPath), now);
+  // Registering is unauthenticated so it is keyed by address, but a family behind one router
+  // is one address: several siblings installing on the same evening must not lock each other
+  // out. addFriend is keyed by player and is where guessing actually costs something.
+  const registerLimit = new RateLimiter(limits.registerPerHour, 60 * MINUTE, now);
+  const friendLimit = new RateLimiter(limits.friendPerMinute, MINUTE, now);
+  const writeLimit = new RateLimiter(limits.writesPerMinute, MINUTE, now);
   return createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -312,16 +397,33 @@ export function createServer(dbPath: string, now?: () => number) {
     const auth = req.headers.authorization ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
     const send = (status: number, body: unknown) => { res.writeHead(status); res.end(JSON.stringify(body)); };
+    // Fly terminates TLS and puts the client address here; fall back to the socket otherwise.
+    const client = String(req.headers["fly-client-ip"] ?? req.socket.remoteAddress ?? "unknown");
+    const tooMany = (limiter: RateLimiter, key: string): boolean => {
+      if (limiter.take(key)) return false;
+      send(429, { error: "Slow down a moment, then try again." });
+      return true;
+    };
     try {
       const m = req.method ?? "GET";
       const p = url.pathname;
       const tradeMatch = p.match(/^\/v1\/trades\/([0-9a-f-]{36})(?:\/(offer|confirm|decline))?$/);
       if (m === "GET" && p === "/health") return send(200, { ok: true });
-      if (m === "POST" && p === "/v1/register") return send(200, post.register(await readJson(req)));
+      if (m === "POST" && p === "/v1/register") {
+        if (tooMany(registerLimit, client)) return;
+        return send(200, post.register(await readJson(req)));
+      }
       if (m === "GET" && p === "/v1/me") return send(200, post.me(token));
       if (m === "PUT" && p === "/v1/me") return send(200, post.rename(token, await readJson(req)));
-      if (m === "PUT" && p === "/v1/inventory") return send(200, post.putInventory(token, await readJson(req)));
-      if (m === "POST" && p === "/v1/friends") return send(200, post.addFriend(token, await readJson(req)));
+      if (m === "PUT" && p === "/v1/inventory") {
+        if (tooMany(writeLimit, token ?? client)) return; // also caps the disk-fill route
+        return send(200, post.putInventory(token, await readJson(req)));
+      }
+      if (m === "POST" && p === "/v1/friends") {
+        // The one that matters: guessing codes is how a stranger reaches a child.
+        if (tooMany(friendLimit, token ?? client)) return;
+        return send(200, post.addFriend(token, await readJson(req)));
+      }
       if (m === "POST" && p === "/v1/trades") return send(200, post.createTrade(token, await readJson(req)));
       if (tradeMatch) {
         const id = tradeMatch[1] as string;
@@ -331,6 +433,8 @@ export function createServer(dbPath: string, now?: () => number) {
         if (m === "POST" && action === "confirm") return send(200, post.confirm(token, id));
         if (m === "POST" && action === "decline") return send(200, post.decline(token, id));
       }
+      const friendMatch = p.match(/^\/v1\/friends\/([0-9a-f-]{36})$/);
+      if (m === "DELETE" && friendMatch) return send(200, post.removeFriend(token, friendMatch[1] as string));
       const ack = p.match(/^\/v1\/deliveries\/(\d+)\/ack$/);
       if (m === "POST" && ack) return send(200, post.ackDelivery(token, Number(ack[1])));
       send(404, { error: "not found" });

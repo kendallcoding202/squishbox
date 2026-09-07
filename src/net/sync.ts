@@ -66,9 +66,12 @@ export async function syncNow(): Promise<void> {
       net.skewMs = me.serverNow - Date.now();
       if (me.deliveries.length) {
         for (const d of me.deliveries) {
-          store.update((s) => { applyDelivery(s, d, Date.now()); });
+          // applyDelivery is keyed on the delivery id, so a replay after a failed ack is a
+          // no-op rather than a second helping. Only announce what actually landed.
+          let applied = false;
+          store.update((s) => { applied = applyDelivery(s, d, Date.now()); });
           await api.ack(t, d.id);
-          onDelivery?.(d.partnerName, d.give, d.get);
+          if (applied) onDelivery?.(d.partnerName, d.give, d.get);
         }
         lastInventoryJson = ""; // force a push next time
       }

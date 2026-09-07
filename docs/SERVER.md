@@ -60,9 +60,20 @@ after a quiet spell takes a couple of seconds. That's fine for this; the app ret
 
 ## Backups
 
-The database is the volume at `/data/squishbox.db`. `fly ssh console -C "sqlite3 /data/squishbox.db .dump"`
-gives a plain-text dump. Losing it loses friends lists and pending trades, not anyone's
-collection: collections live on the devices.
+The database is the volume at `/data/squishbox.db`.
+
+Fly takes daily volume snapshots on its own (5 days retained), and that is the real safety
+net. For a copy on your Mac:
+
+```sh
+fly ssh sftp get /data/squishbox.db squishbox-backup.db --app squishbox-api
+```
+
+Don't reach for `sqlite3 ... .dump` over `fly ssh console`: the runtime image is
+`node:22-slim` and has no `sqlite3` binary, so that command fails on first use.
+
+Losing the file loses friends lists and pending trades, not anyone's collection —
+collections live on the devices.
 
 ## Known limits (deliberate for the friends-and-family test)
 
