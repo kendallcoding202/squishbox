@@ -84,6 +84,17 @@ export function owns(inv: Inventory, items: string[]): boolean {
   return true;
 }
 
+/**
+ * Owns them *and* keeps one of each afterwards — the promise the app makes on every screen.
+ * `owns` alone is not enough at execution time: an offer built when the player had two can
+ * still be sitting on screen after the spare is sold or traded away, and letting it through
+ * takes the last copy, blanks the tile back to "???", and can re-lock a series.
+ */
+export function ownsSpares(inv: Inventory, items: string[]): boolean {
+  for (const [id, n] of counts(items)) if ((inv[id] ?? 0) - n < 1) return false;
+  return true;
+}
+
 /** Execute a locked trade. Returns new inventories; never mutates inputs. Throws if anything is off. */
 export function execute(
   trade: Trade,

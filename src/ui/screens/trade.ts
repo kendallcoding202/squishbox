@@ -2,7 +2,7 @@ import { BOTS, BOT_BY_ID, botAccepts, botProposal, type Bot } from "../../game/b
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { systemRng } from "../../game/rng";
 import { displayName, log, NICKNAME_MAX, seriesUnlocked, type Inventory } from "../../game/state";
-import { assess, canConfirm, confirm, createTrade, execute, owns, setOffer, type SideKey, type Trade } from "../../game/trade";
+import { assess, canConfirm, confirm, createTrade, execute, owns, ownsSpares, setOffer, type SideKey, type Trade } from "../../game/trade";
 import { api, ApiError, type Friend } from "../../net/api";
 import { ensureRegistered, net, syncNow, token } from "../../net/sync";
 import { confetti, h, overlay, toast } from "../dom";
@@ -27,6 +27,27 @@ let busy = false;
 
 let rerender: () => void = () => {};
 export function onTradeRerender(fn: () => void): void { rerender = fn; }
+
+/**
+ * Stop the timers when the Trade tab is not on screen.
+ *
+ * The ticker animates the read-it-over countdown by calling the app's whole render, which
+ * clears and rebuilds every node. Left running on another tab it rebuilt the Collection
+ * four times a second: taps landed on nodes that were gone before pointerup, and every
+ * rebuild yanked the scroll position back mid-flick. The open trade is kept, so coming
+ * back to the tab picks up where it left off.
+ */
+export function pauseTradeTimers(): void {
+  clearInterval(ticker); ticker = 0;
+  clearInterval(poller); poller = 0;
+}
+
+/** Restart what the current trade needs, on returning to the tab. */
+function resumeTradeTimers(): void {
+  if (!active || !partner) return;
+  if (!ticker) ticker = window.setInterval(rerender, 250);
+  if (partner.kind === "friend" && !poller) poller = window.setInterval(() => { void pollRemote(); }, 2000);
+}
 
 const now = () => Date.now() + (partner?.kind === "friend" ? net.skewMs : 0);
 const partnerName = () => (partner?.kind === "bot" ? partner.bot.name : partner?.friend.name ?? "");
@@ -172,7 +193,9 @@ async function onConfirm(): Promise<void> {
   setTimeout(() => {
     if (!active || active.id !== t.id) return;
     const botInv = store.botInventory(bot.id);
-    if (botAccepts(bot, t, "b", botInv) && owns(store.state.inventory, t.a.items) && owns(botInv, t.b.items)) {
+    // Re-checked against the inventory as it is *now*, not as it was when the offer was built:
+    // the spare may have been sold to the Steam Pot or traded away in between.
+    if (botAccepts(bot, t, "b", botInv) && ownsSpares(store.state.inventory, t.a.items) && owns(botInv, t.b.items)) {
       t = confirm(t, "b", Date.now());
       const r = execute(t, store.state.inventory, botInv);
       store.update((s) => {
@@ -188,6 +211,13 @@ async function onConfirm(): Promise<void> {
       success(); haptic("success");
       toast(`Trade complete with ${bot.name}!`);
       closeTrade();
+    } else if (!ownsSpares(store.state.inventory, t.a.items)) {
+      // Not the neighbour's doing: the spare went somewhere else while this offer sat open.
+      active = setOffer(t, "a", [], Date.now());
+      proposals = null;
+      nope(); haptic("medium");
+      lastMessage = "You only have one of those now, so it stays in your basket. Pick something else to trade.";
+      rerender();
     } else {
       active = setOffer(t, "b", t.b.items, Date.now()); // resets both confirmations so the kid can edit
       store.update((s) => { s.stats.tradesDeclined += 1; });
@@ -352,7 +382,7 @@ export function renderTrade(): HTMLElement {
   if (!s.parent.tradingEnabled) {
     return h("div", { class: "screen" }, h("h1", null, "Trade"), h("div", { class: "card", style: "margin-top:12px" }, h("h3", null, "Trading is off"), h("p", { class: "muted" }, "A parent turned trading off in the Parent corner.")));
   }
-  if (active && partner) return tradeView();
+  if (active && partner) { resumeTradeTimers(); return tradeView(); }
 
   const offers = ensureProposals();
   const mySpares = spares(s.inventory).length;

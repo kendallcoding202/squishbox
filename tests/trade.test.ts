@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BOTS, botAccepts, botProposal, seedBotInventory } from "../src/game/bots";
 import { mulberry32 } from "../src/game/rng";
-import { assess, canConfirm, confirm, COOLDOWN_MS, createTrade, decline, execute, setOffer } from "../src/game/trade";
+import { assess, canConfirm, confirm, COOLDOWN_MS, createTrade, decline, execute, owns, ownsSpares, setOffer } from "../src/game/trade";
 
 const T0 = 1_000_000;
 
@@ -105,5 +105,28 @@ describe("neighbor bots", () => {
     expect(p!.a.items).toEqual(["c05"]);
     expect(p!.b.items).toEqual(["c01"]);
     expect(botProposal(bot, botInv, { c05: 1 }, T0, mulberry32(1))).toBeNull();
+  });
+});
+
+describe("the last copy never leaves", () => {
+  it("ownsSpares refuses to give away the only one, where owns allows it", () => {
+    const inv = { c01: 1, c02: 3 };
+    // owns() is satisfied by a single copy, which is what let a stale offer take it.
+    expect(owns(inv, ["c01"])).toBe(true);
+    expect(ownsSpares(inv, ["c01"])).toBe(false);
+  });
+
+  it("allows a real spare", () => {
+    expect(ownsSpares({ c02: 2 }, ["c02"])).toBe(true);
+    expect(ownsSpares({ c02: 3 }, ["c02", "c02"])).toBe(true);
+  });
+
+  it("counts duplicates in the same offer", () => {
+    // two of the same id offered out of two held would empty it
+    expect(ownsSpares({ c02: 2 }, ["c02", "c02"])).toBe(false);
+  });
+
+  it("refuses an id the player does not have at all", () => {
+    expect(ownsSpares({}, ["c01"])).toBe(false);
   });
 });

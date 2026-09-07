@@ -6,7 +6,7 @@ import { success } from "./ui/sound";
 import { onCollectionRerender, renderCollection } from "./ui/screens/collection";
 import { onHomeRerender, renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
-import { onTradeRerender, renderTrade } from "./ui/screens/trade";
+import { onTradeRerender, pauseTradeTimers, renderTrade } from "./ui/screens/trade";
 import { setSoundEnabled, unlockAudio } from "./ui/sound";
 import { store } from "./ui/store";
 
@@ -35,6 +35,7 @@ function render(): void {
 
 function go(tab: Tab): void {
   if (tab !== "parents") lockParents();
+  if (tab !== "trade") pauseTradeTimers();
   current = tab;
   history.replaceState(null, "", `#${tab}`);
   window.scrollTo(0, 0);
@@ -43,6 +44,11 @@ function go(tab: Tab): void {
 
 setSoundEnabled(store.state.settings.sound);
 store.subscribe((s) => { setSoundEnabled(s.settings.sound); render(); });
+// If the device won't let us write, the collection only exists until the app closes.
+// Better a kid's grown-up sees this now than an empty basket tomorrow.
+store.onSaveError(() => {
+  toast("This device isn't saving the collection. Ask a grown-up to check storage space.");
+});
 document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
 onCollectionRerender(render);
 onHomeRerender(render);

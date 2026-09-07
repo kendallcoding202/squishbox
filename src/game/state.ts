@@ -349,6 +349,14 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
         if (!Array.isArray(merged.shelf)) merged.shelf = fresh.shelf;
         if (!Array.isArray(merged.rewardsClaimed)) merged.rewardsClaimed = fresh.rewardsClaimed;
         if (!Array.isArray(merged.celebrated)) merged.celebrated = fresh.celebrated;
+        // A character id we don't know about (a hand-edited save, or one written by a build
+        // that had a dumpling this one doesn't) reaches the Trade screen as undefined and
+        // throws on .rarity, taking the whole tab down. Drop what we can't draw.
+        for (const id of Object.keys(merged.inventory)) {
+          const n = merged.inventory[id];
+          if (!CHARACTER_BY_ID.has(id) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[id];
+        }
+        merged.shelf = merged.shelf.filter((id) => CHARACTER_BY_ID.has(id));
         if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
         if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;
         if (!Number.isFinite(merged.parent.dailyBoxCap) || merged.parent.dailyBoxCap < 1) merged.parent.dailyBoxCap = fresh.parent.dailyBoxCap;
@@ -361,11 +369,18 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
   return newState();
 }
 
-export function saveState(storage: Pick<Storage, "setItem"> | null, state: SaveState): void {
+/**
+ * Returns false when the collection did not reach disk. Swallowing that silently means a
+ * kid plays a whole session, closes the app, and finds an empty basket with no warning:
+ * the caller is expected to say something.
+ */
+export function saveState(storage: Pick<Storage, "setItem"> | null, state: SaveState): boolean {
+  if (!storage) return false;
   try {
-    storage?.setItem(KEY, JSON.stringify(state));
+    storage.setItem(KEY, JSON.stringify(state));
+    return true;
   } catch {
-    /* quota or private mode: ignore */
+    return false; // quota, private mode, or the webview evicted our storage
   }
 }
 

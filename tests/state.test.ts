@@ -101,14 +101,53 @@ describe("loadState survives a damaged save", () => {
   });
 
   it("still keeps good values", () => {
-    const s = load(withField({ coins: 123, inventory: { s1c01: 2 } }));
+    const s = load(withField({ coins: 123, inventory: { c01: 2 } }));
     expect(s.coins).toBe(123);
-    expect(s.inventory).toEqual({ s1c01: 2 });
+    expect(s.inventory).toEqual({ c01: 2 });
   });
 });
 
 describe("online trading is off until a grown-up turns it on", () => {
   it("defaults to off so nothing leaves the device", () => {
     expect(newState().parent.onlineTrading).toBe(false);
+  });
+});
+
+describe("a failed save is reported, not swallowed", () => {
+  it("returns false when storage refuses the write", () => {
+    const full = { setItem: () => { throw new DOMException("QuotaExceededError"); } };
+    expect(saveState(full, newState())).toBe(false);
+  });
+
+  it("returns false when there is no storage at all", () => {
+    expect(saveState(null, newState())).toBe(false);
+  });
+
+  it("returns true on a normal write", () => {
+    const mem = new Map<string, string>();
+    expect(saveState({ setItem: (k: string, v: string) => { mem.set(k, v); } }, newState())).toBe(true);
+    expect(mem.size).toBe(1);
+  });
+});
+
+describe("a save naming dumplings this build doesn't have", () => {
+  const load = (o: object) => loadState({ getItem: () => JSON.stringify(o) });
+  const base = { version: 1, coins: 50, shelf: [], nicknames: {}, log: [],
+    boxesToday: { day: "2026-09-06", count: 0 }, rewardsClaimed: [], celebrated: [], pity: 0 };
+
+  it("drops unknown ids instead of crashing the Trade screen on .rarity", () => {
+    const s = load({ ...base, inventory: { c01: 2, notARealDumpling: 3 } });
+    expect(s.inventory.c01).toBe(2);
+    expect(s.inventory.notARealDumpling).toBeUndefined();
+  });
+
+  it("drops non-positive and non-numeric counts", () => {
+    const s = load({ ...base, inventory: { c01: 0, c02: -3, c03: "lots", c04: 1 } });
+    expect(Object.keys(s.inventory)).toEqual(["c04"]);
+  });
+
+  it("drops unknown ids from the shelf too", () => {
+    const s = load({ ...base, inventory: { c01: 1 }, shelf: ["c01", "ghost"] });
+    expect(s.shelf).toEqual(["c01"]);
   });
 });

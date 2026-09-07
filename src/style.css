@@ -243,3 +243,44 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   .reveal-stage .dumpling { width: 128px !important; height: 128px !important; }
   .mystery { font-size: 76px; }
 }
+
+/* ---- reduced motion ----
+   The whole app breathes: idle dumplings, the wobbling box, shimmering meters, confetti.
+   Someone who asks their device for less movement should get a still, working game, so
+   only the transforms that communicate state (a pressed button) survive. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .dumpling-inner.idle, .mystery { animation: none !important; }
+  .btn:active:not(:disabled) { transform: none; }
+}
+
+/* ---- landscape safe areas ----
+   .screen and .nav had bare horizontal padding. In landscape the camera housing eats the
+   leading inset, so the heading, the first collection tile and the first nav tab sat
+   underneath it and the tab was partly untappable. */
+.screen {
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-right: calc(16px + env(safe-area-inset-right));
+}
+.nav { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+
+/* ---- tap targets ----
+   Apple asks for 44pt. The remove button on a trade item was 20x20 and sits on top of the
+   dumpling it removes, so a near miss squished the dumpling instead of taking it back out
+   — on the one screen where a kid is giving something away. */
+/* The badge stays 20px so the layout is unchanged; an invisible pad centred on it carries
+   the touch. Growing the button itself would drag the visible x away from the corner. */
+.trade-item .rm::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 44px; height: 44px;
+  transform: translate(-50%, -50%);
+}
+.btn.sm { min-height: 44px; }
+.chip { padding: 11px 14px; }
+.iconbtn { min-width: 44px; min-height: 44px; }

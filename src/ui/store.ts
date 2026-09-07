@@ -11,16 +11,30 @@ function storage(): Storage | null {
 class Store {
   state: SaveState = loadState(storage());
   private listeners = new Set<Listener>();
+  private saveBroken = false;
+  private onSaveFail: (() => void) | null = null;
+
+  /** Told once, the first time the collection fails to reach disk. */
+  onSaveError(fn: () => void): void {
+    this.onSaveFail = fn;
+  }
+
+  private write(): void {
+    if (saveState(storage(), this.state)) return;
+    if (this.saveBroken) return; // say it once, not on every tap
+    this.saveBroken = true;
+    this.onSaveFail?.();
+  }
 
   update(fn: (s: SaveState) => void): void {
     fn(this.state);
-    saveState(storage(), this.state);
+    this.write();
     for (const l of this.listeners) l(this.state);
   }
 
   /** Save without notifying listeners. For bookkeeping done during a render. */
   persist(): void {
-    saveState(storage(), this.state);
+    this.write();
   }
 
   subscribe(l: Listener): () => void {
@@ -33,7 +47,7 @@ class Store {
       const bot = BOTS.find((b) => b.id === botId);
       if (!bot) throw new Error(`Unknown bot ${botId}`);
       this.state.bots[botId] = seedBotInventory(bot);
-      saveState(storage(), this.state);
+      this.write();
     }
     return this.state.bots[botId] as Inventory;
   }
