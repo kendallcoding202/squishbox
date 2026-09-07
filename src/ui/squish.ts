@@ -60,6 +60,9 @@ export function attachSquish(el: HTMLElement, opts: SquishOptions): void {
     if (settled && !pressed) {
       Object.assign(cur, target);
       apply();
+      // Hand the layer back. Holding will-change between squishes is what caused iPad to
+      // flicker: 30 of these on the Collection screen is 30 permanent compositing layers.
+      el.style.willChange = "";
       raf = 0;
       return;
     }
@@ -67,21 +70,32 @@ export function attachSquish(el: HTMLElement, opts: SquishOptions): void {
   };
 
   const kick = () => {
-    if (!raf) { last = performance.now(); raf = requestAnimationFrame(step); }
+    if (!raf) {
+      el.style.willChange = "transform"; // only for the length of the animation
+      last = performance.now();
+      raf = requestAnimationFrame(step);
+    }
   };
+
+  // The rendered size, not the size we were constructed with: CSS overrides it per breakpoint
+  // (a Collection tile is 80px on a phone and 116px on a tablet). Using the stale number made
+  // drags read as far bigger than they were on iPad. offsetWidth, not getBoundingClientRect,
+  // so a squish already in progress doesn't measure its own transform.
+  let size = opts.size;
 
   const setPressTarget = (dx: number, dy: number) => {
     // dx, dy are drag offsets in units of the element size (-1..1 typical)
     const push = 1 + Math.min(0.6, Math.abs(dx) * 0.5);
     target.sx = 1.18 * push;
     target.sy = 0.8 - Math.min(0.25, Math.max(0, dy) * 0.5) + Math.min(0.15, Math.max(0, -dy) * 0.2);
-    target.tx = dx * opts.size * 0.18;
-    target.ty = Math.max(0, dy) * opts.size * 0.08;
+    target.tx = dx * size * 0.18;
+    target.ty = Math.max(0, dy) * size * 0.08;
     target.sk = -dx * 14;
   };
 
   el.addEventListener("pointerdown", (e) => {
     pressed = true;
+    size = el.offsetWidth || opts.size;
     startX = e.clientX;
     startY = e.clientY;
     el.setPointerCapture?.(e.pointerId);
@@ -94,8 +108,8 @@ export function attachSquish(el: HTMLElement, opts: SquishOptions): void {
   });
   el.addEventListener("pointermove", (e) => {
     if (!pressed) return;
-    const dx = Math.max(-1, Math.min(1, (e.clientX - startX) / opts.size));
-    const dy = Math.max(-1, Math.min(1, (e.clientY - startY) / opts.size));
+    const dx = Math.max(-1, Math.min(1, (e.clientX - startX) / size));
+    const dy = Math.max(-1, Math.min(1, (e.clientY - startY) / size));
     setPressTarget(dx, dy);
     kick();
   });

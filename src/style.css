@@ -72,7 +72,11 @@ p.muted, .muted { color: var(--muted); }
 .odds .onein { color: var(--muted); text-align: right; min-width: 56px; }
 
 /* dumpling: outer div is driven by the spring in squish.ts, inner div carries the idle breathing */
-.dumpling { display: inline-block; will-change: transform; cursor: pointer; }
+/* No will-change here on purpose. It promotes every dumpling to its own compositing layer for
+   the whole time it is on screen, and the Collection shows 30 at once — on iPad they are 116px
+   rather than 80px and five to a row, so WKWebView was dropping and flickering layers under the
+   memory pressure. attachSquish sets will-change only while a squish is actually animating. */
+.dumpling { display: inline-block; cursor: pointer; }
 .dumpling-inner { width: 100%; height: 100%; transform-origin: 50% 92%; }
 .dumpling-inner.idle { animation: idle 3.2s ease-in-out infinite; }
 @keyframes idle { 50% { transform: scale(1.03, 0.97) translateY(1px); } }
