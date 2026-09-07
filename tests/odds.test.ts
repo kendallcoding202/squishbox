@@ -81,3 +81,27 @@ describe("published odds match what a player actually pulls", () => {
     expect(shown.oneIn!).toBeLessThan(200);
   });
 });
+
+describe("the number on the box card is fit to print", () => {
+  it("rounds to at most two decimals", () => {
+    for (const box of BOXES) {
+      for (const { rarity, percent } of describeOdds(box)) {
+        const decimals = (String(percent).split(".")[1] ?? "").length;
+        expect(decimals, `${box.name} ${rarity} renders as ${percent}%`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it("still adds up to about 100 after rounding", () => {
+    for (const box of BOXES) {
+      const sum = describeOdds(box).reduce((a, r) => a + r.percent, 0);
+      expect(Math.abs(sum - 100), box.name).toBeLessThan(0.05);
+    }
+  });
+
+  it("keeps 1-in-N honest rather than deriving it from the rounded figure", () => {
+    const leg = describeOdds(BOXES[0]!).find((r) => r.rarity === "legendary")!;
+    expect(leg.percent).toBe(0.69);
+    expect(leg.oneIn).toBe(144); // 100/0.69 would round to 145
+  });
+});

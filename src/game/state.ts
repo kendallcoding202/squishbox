@@ -29,6 +29,8 @@ export interface SaveState {
   inventory: Inventory;
   lastDailyClaim: string | null;
   streak: number;
+  /** Latest wall clock this save has ever seen. The day ratchets forward, never back. */
+  clockHighWater: number;
   boxesToday: { day: string; count: number };
   stats: { boxesOpened: number; coinsEarned: number; coinsSpent: number; tradesCompleted: number; tradesDeclined: number; coinsFromSales: number };
   log: LogEntry[];
@@ -68,6 +70,7 @@ export function newState(playerName = "You"): SaveState {
     inventory: {},
     lastDailyClaim: null,
     streak: 0,
+    clockHighWater: 0,
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
@@ -120,9 +123,27 @@ export function seriesUnlockProgress(state: SaveState, id: SeriesId): [number, n
 }
 
 /** Series that just became unlocked and have not been celebrated yet. Marks them celebrated. */
+/** Series that are unlocked but whose celebration the kid has not been shown yet. Does not consume. */
+export function pendingUnlocks(state: SaveState): SeriesId[] {
+  return SERIES.filter((s) => s.unlockFrom && seriesUnlocked(state, s.id) && !state.celebrated.includes(s.id)).map((s) => s.id);
+}
+
+/**
+ * Spend the celebration, at the moment it is actually put on screen.
+ *
+ * Marking it any earlier loses it: the old code consumed every pending unlock during
+ * render but only showed the modal when no other overlay was up, so unlocking Series 2
+ * on a box pull — or while a friend's trade landed — marked it celebrated and then
+ * never celebrated it.
+ */
+export function markCelebrated(state: SaveState, id: SeriesId): void {
+  if (!state.celebrated.includes(id)) state.celebrated.push(id);
+}
+
+/** @deprecated Consumes whether or not the celebration is shown; use pendingUnlocks + markCelebrated. */
 export function takeNewUnlocks(state: SaveState): SeriesId[] {
-  const fresh = SERIES.filter((s) => s.unlockFrom && seriesUnlocked(state, s.id) && !state.celebrated.includes(s.id)).map((s) => s.id);
-  for (const id of fresh) state.celebrated.push(id);
+  const fresh = pendingUnlocks(state);
+  for (const id of fresh) markCelebrated(state, id);
   return fresh;
 }
 
@@ -159,25 +180,48 @@ export function log(state: SaveState, kind: LogEntry["kind"], text: string, now:
   if (state.log.length > LOG_LIMIT) state.log.length = LOG_LIMIT;
 }
 
+/**
+ * The clock the game runs on: never earlier than the latest moment this save has seen.
+ *
+ * Both the daily coins and the daily box cap — the only limit a parent actually sets —
+ * hang off the device's calendar date, and Settings is two taps from any child. Winding
+ * the clock back and forth between two dates farmed a day's coins every few seconds and
+ * a fresh box allowance each way. A ratchet kills the round trip: going back is ignored.
+ *
+ * It does not stop a one-way jump into the future, which can't be settled without a
+ * trusted clock; but that spends the day it skips to, and cannot be undone.
+ */
+export function effectiveNow(state: SaveState, wall: Date): Date {
+  const high = Number.isFinite(state.clockHighWater) ? state.clockHighWater : 0;
+  return wall.getTime() < high ? new Date(high) : wall;
+}
+
+function markClockSeen(state: SaveState, now: Date): void {
+  const ms = now.getTime();
+  if (!Number.isFinite(state.clockHighWater) || ms > state.clockHighWater) state.clockHighWater = ms;
+}
+
 export function canClaimDaily(state: SaveState, today: Date): boolean {
-  return state.lastDailyClaim !== dayKey(today);
+  return state.lastDailyClaim !== dayKey(effectiveNow(state, today));
 }
 
 /** Free daily coins with a small streak bonus. Once per calendar day. */
 export function claimDaily(state: SaveState, today: Date): number {
-  if (!canClaimDaily(state, today)) return 0;
-  state.streak = state.lastDailyClaim === yesterdayKey(today) ? state.streak + 1 : 1;
+  const now = effectiveNow(state, today);
+  if (!canClaimDaily(state, now)) return 0;
+  markClockSeen(state, now);
+  state.streak = state.lastDailyClaim === yesterdayKey(now) ? state.streak + 1 : 1;
   const bonus = Math.min(state.streak - 1, STREAK_CAP) * STREAK_BONUS;
   const amount = DAILY_COINS + bonus;
   state.coins += amount;
   state.stats.coinsEarned += amount;
-  state.lastDailyClaim = dayKey(today);
-  log(state, "daily", `Claimed ${amount} coins (day ${state.streak} streak)`, today.getTime());
+  state.lastDailyClaim = dayKey(now);
+  log(state, "daily", `Claimed ${amount} coins (day ${state.streak} streak)`, now.getTime());
   return amount;
 }
 
 export function boxesOpenedToday(state: SaveState, today: Date): number {
-  return state.boxesToday.day === dayKey(today) ? state.boxesToday.count : 0;
+  return state.boxesToday.day === dayKey(effectiveNow(state, today)) ? state.boxesToday.count : 0;
 }
 
 export type OpenResult =
@@ -192,10 +236,12 @@ export function luckyNext(state: SaveState): boolean {
 }
 
 /** Spend coins, roll the box, add to inventory. The lucky meter guarantees Rare+ every PITY_AT boxes. */
-export function openBox(state: SaveState, box: Box, rng: Rng, today: Date): OpenResult {
+export function openBox(state: SaveState, box: Box, rng: Rng, wall: Date): OpenResult {
+  const today = effectiveNow(state, wall); // the cap is a parent's setting; don't let the clock undo it
   if (!seriesUnlocked(state, box.series)) return { ok: false, reason: "locked" };
   if (state.coins < box.price) return { ok: false, reason: "coins" };
   if (boxesOpenedToday(state, today) >= state.parent.dailyBoxCap) return { ok: false, reason: "cap" };
+  markClockSeen(state, today);
   const lucky = luckyNext(state);
   const rollFrom: Box = lucky ? { ...box, odds: { ...box.odds, common: 0, uncommon: 0 } } : box;
   const c = rollBox(rollFrom, rng);

@@ -56,11 +56,18 @@ export function effectiveOdds(box: Box): Record<Rarity, number> {
   return out;
 }
 
-/** Odds as the player sees them: rarity, percent, and rough "1 in N". Includes the lucky meter. */
+/**
+ * Odds as the player sees them: rarity, percent, and rough "1 in N". Includes the lucky meter.
+ * Rounded, because this goes straight onto the box card — the raw figure is 0.6930016304589148.
+ */
 export function describeOdds(box: Box): { rarity: Rarity; percent: number; oneIn: number | null }[] {
   const eff = effectiveOdds(box);
   return RARITIES.map((rarity) => {
-    const percent = eff[rarity];
-    return { rarity, percent, oneIn: percent > 0 ? Math.round(100 / percent) : null };
+    const exact = eff[rarity] ?? 0;
+    return {
+      rarity,
+      percent: Math.round(exact * 100) / 100,
+      oneIn: exact > 0 ? Math.round(100 / exact) : null, // from the exact figure, so 1-in-N stays true
+    };
   });
 }

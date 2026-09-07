@@ -4,7 +4,7 @@ import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
   boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
-  PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, takeNewUnlocks, type OpenResult,
+  markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult,
 } from "../../game/state";
 import { confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
@@ -13,6 +13,7 @@ import { coin, haptic, pop, reveal as revealSound, soundEnabled, thud } from "..
 import { store } from "../store";
 
 let shopSeries: SeriesId = "s1";
+let celebrationTimer = 0;
 let rerender: () => void = () => {};
 export function onHomeRerender(fn: () => void): void { rerender = fn; }
 
@@ -260,8 +261,19 @@ export function renderHome(): HTMLElement {
   const owned = ownedCount(s.inventory);
 
   if (!s.onboarded && !document.querySelector(".overlay")) setTimeout(welcome, 50);
-  const fresh = takeNewUnlocks(s);
-  if (fresh.length) { store.persist(); if (!document.querySelector(".overlay")) setTimeout(() => celebrateUnlock(fresh[0] as SeriesId), 400); }
+  // Only spend the celebration once it is really on screen. startOpen mutates the store
+  // before it builds the reveal sheet, so at this instant "no overlay" can still mean one
+  // is about to appear — hence the second check when the timer fires.
+  const fresh = pendingUnlocks(s);
+  if (fresh.length && celebrationTimer === 0 && !document.querySelector(".overlay")) {
+    const id = fresh[0] as SeriesId;
+    celebrationTimer = window.setTimeout(() => {
+      celebrationTimer = 0;
+      if (document.querySelector(".overlay")) return; // busy; a later render will offer it again
+      store.update((st) => markCelebrated(st, id));
+      celebrateUnlock(id);
+    }, 400);
+  }
 
   const daily = h("div", { class: "card row between" },
     h("div", { class: "grow" },

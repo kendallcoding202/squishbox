@@ -284,3 +284,20 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .btn.sm { min-height: 44px; }
 .chip { padding: 11px 14px; }
 .iconbtn { min-width: 44px; min-height: 44px; }
+
+/* ---- toast: let long ones wrap ----
+   nowrap plus translateX(-50%) pushed both ends off a 375px screen, and the part that got
+   cut was the dumpling names in "Trade with Mika done! You got ...". */
+.toast {
+  white-space: normal;
+  max-width: min(90vw, 420px);
+  width: max-content;
+  text-align: center;
+  line-height: 1.35;
+}
+
+/* ---- modals keep their scrolling to themselves ----
+   Dragging the backdrop used to scroll the collection underneath, so closing the sheet
+   left the kid somewhere else in the list. */
+.overlay { overscroll-behavior: contain; }
+.sheet { overscroll-behavior: contain; }

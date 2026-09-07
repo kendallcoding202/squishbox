@@ -151,3 +151,38 @@ describe("a save naming dumplings this build doesn't have", () => {
     expect(s.shelf).toEqual(["c01"]);
   });
 });
+
+describe("winding the device clock back does not buy another day", () => {
+  const day = (s: string) => new Date(`${s}T10:00:00`);
+
+  it("refuses a repeat daily claim after the clock goes backwards", () => {
+    const s = newState();
+    expect(claimDaily(s, day("2026-09-06"))).toBe(DAILY_COINS);
+    expect(claimDaily(s, day("2026-09-07"))).toBeGreaterThan(0);
+    // Settings is two taps away: this used to hand out another day's coins, over and over.
+    expect(claimDaily(s, day("2026-09-06"))).toBe(0);
+    expect(claimDaily(s, day("2026-09-05"))).toBe(0);
+    // and going forward again from the real day still works
+    expect(claimDaily(s, day("2026-09-08"))).toBeGreaterThan(0);
+  });
+
+  it("does not hand back a fresh box allowance", () => {
+    const s = newState();
+    s.coins = 100000;
+    s.parent.dailyBoxCap = 3;
+    const box = BOXES[0]!;
+    for (let i = 0; i < 3; i++) expect(openBox(s, box, mulberry32(i + 1), day("2026-09-06")).ok).toBe(true);
+    expect(openBox(s, box, mulberry32(9), day("2026-09-06"))).toEqual({ ok: false, reason: "cap" });
+    // wind back a day: the cap a parent set must still hold
+    expect(openBox(s, box, mulberry32(10), day("2026-09-05"))).toEqual({ ok: false, reason: "cap" });
+    // a genuine new day still refills it
+    expect(openBox(s, box, mulberry32(11), day("2026-09-07")).ok).toBe(true);
+  });
+
+  it("leaves an honest forward-moving clock alone", () => {
+    const s = newState();
+    expect(claimDaily(s, day("2026-09-06"))).toBe(DAILY_COINS);
+    expect(claimDaily(s, day("2026-09-07"))).toBe(DAILY_COINS + STREAK_BONUS);
+    expect(s.streak).toBe(2);
+  });
+});
