@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,8 +8,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        configureAudioSession()
         return true
+    }
+
+    /// The game's squeaks and chimes are WebAudio, so they run through this app's audio session.
+    /// Without setting a category we inherit the default, soloAmbient, which stops whatever the
+    /// grown-up was already listening to the moment a child opens the app.
+    ///
+    /// .ambient instead: mixes with other audio, so a podcast or music keeps playing underneath.
+    /// Both categories stay silent when the Ring/Silent switch is flipped, which is deliberate —
+    /// a parent who mutes their phone in a waiting room means it, and .playback would talk over
+    /// that. If the app is ever silent when it shouldn't be, check that switch first.
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            // Sound is a nice-to-have; never let it stop the app from launching.
+            NSLog("Squishbox: audio session setup failed: \(error.localizedDescription)")
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
