@@ -74,3 +74,16 @@ export function confetti(colors: string[], n = 60): void {
   document.body.appendChild(wrap);
   setTimeout(() => wrap.remove(), 3600);
 }
+
+/** Little hearts drifting up from a point. For tapping the buddy — pure delight, no state. */
+export function hearts(x: number, y: number, n = 7): void {
+  const wrap = h("div", { class: "hearts" });
+  for (let i = 0; i < n; i++) {
+    wrap.appendChild(h("i", {
+      style: `left:${x}px;top:${y}px;--dx:${(Math.random() * 2 - 1) * 80}px;--r:${Math.random() * 50 - 25}deg;` +
+        `animation-delay:${(i * 0.06).toFixed(2)}s;font-size:${(15 + Math.random() * 15).toFixed(0)}px`,
+    }, "\u{1F49B}"));
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 2000);
+}

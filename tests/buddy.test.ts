@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MILESTONES, MOMENTS, momentText, newBuddy, nextMilestone, reached, recordVisit } from "../src/game/buddy";
+import { decorations, hasOwnVoice, MILESTONES, MOMENTS, momentText, newBuddy, nextMilestone, reached, recordVisit, tricks } from "../src/game/buddy";
 import { chooseBuddy, newState, setBuddyAside, visitBuddy } from "../src/game/state";
 
 const day = (s: string) => new Date(`${s}T10:00:00`);
@@ -137,6 +137,16 @@ describe("the copy never guilts a child", () => {
     }
   });
 
+  it("no trick button implies decline either", () => {
+    // The room's buttons are the most-read copy in the feature; hold them to the same rule.
+    for (const m of MILESTONES) {
+      if (!m.button) continue;
+      for (const word of forbidden) {
+        expect(m.button.toLowerCase().includes(word), `"${m.button}" contains "${word}"`).toBe(false);
+      }
+    }
+  });
+
   it("every moment is something that happened, not something owed", () => {
     expect(MOMENTS.length).toBeGreaterThan(6); // enough that it doesn't feel canned
     const b = newBuddy("c01", 0);
@@ -145,5 +155,64 @@ describe("the copy never guilts a child", () => {
       expect(typeof momentText(b)).toBe("string");
       expect(momentText(b).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("the room", () => {
+  const at = (visits: number) => {
+    const b = newBuddy("c01", 0);
+    b.visits = visits;
+    return b;
+  };
+
+  it("every milestone has a stable id, and they are all distinct", () => {
+    // The id keys a CSS animation (act-<id>) and a room decoration, so a duplicate or a
+    // rename silently breaks the thing it drives.
+    const ids = MILESTONES.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[a-z]+$/);
+  });
+
+  it("every trick has a button, and every accessory has a decoration", () => {
+    for (const m of MILESTONES) {
+      if (m.kind === "trick") expect(m.button, `${m.id} needs a button`).toBeTruthy();
+      if (m.kind === "accessory") expect(m.decor, `${m.id} needs a decoration`).toBeTruthy();
+    }
+  });
+
+  it("hands out nothing at all before the first visit", () => {
+    const b = at(0);
+    expect(tricks(b)).toHaveLength(0);
+    expect(decorations(b)).toHaveLength(0);
+    expect(hasOwnVoice(b)).toBe(false);
+  });
+
+  it("only ever gains tricks and decorations as visits climb", () => {
+    let lastTricks = 0;
+    let lastDecor = 0;
+    for (let v = 0; v <= 25; v++) {
+      const b = at(v);
+      expect(tricks(b).length).toBeGreaterThanOrEqual(lastTricks);
+      expect(decorations(b).length).toBeGreaterThanOrEqual(lastDecor);
+      lastTricks = tricks(b).length;
+      lastDecor = decorations(b).length;
+    }
+  });
+
+  it("finds its own voice at seven visits and keeps it", () => {
+    expect(hasOwnVoice(at(6))).toBe(false);
+    expect(hasOwnVoice(at(7))).toBe(true);
+    expect(hasOwnVoice(at(100))).toBe(true);
+  });
+
+  it("has something to play with from the very first visit", () => {
+    // An empty room with no button to press would be a dead screen on day one.
+    expect(tricks(at(1)).length).toBeGreaterThan(0);
+  });
+
+  it("tricks and decorations together never exceed what was reached", () => {
+    const b = at(21);
+    const kinds = tricks(b).length + decorations(b).length + (hasOwnVoice(b) ? 1 : 0);
+    expect(kinds).toBe(reached(b).length);
   });
 });

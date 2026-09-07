@@ -3,6 +3,7 @@ import { clear, confetti, h, toast } from "./ui/dom";
 import { onNetChange, setDeliveryHandler, startSync } from "./net/sync";
 import { CHARACTER_BY_ID } from "./data/characters";
 import { success } from "./ui/sound";
+import { renderBuddy } from "./ui/screens/buddy";
 import { onCollectionRerender, renderCollection } from "./ui/screens/collection";
 import { onHomeRerender, renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
@@ -10,9 +11,10 @@ import { onTradeRerender, pauseTradeTimers, renderTrade } from "./ui/screens/tra
 import { setSoundEnabled, unlockAudio } from "./ui/sound";
 import { store } from "./ui/store";
 
-type Tab = "home" | "collection" | "trade" | "parents";
+type Tab = "home" | "buddy" | "collection" | "trade" | "parents";
 const TABS: { id: Tab; label: string; ico: string; render: () => HTMLElement }[] = [
   { id: "home", label: "Shop", ico: "🥟", render: renderHome },
+  { id: "buddy", label: "Buddy", ico: "💛", render: renderBuddy },
   { id: "collection", label: "Collection", ico: "🧺", render: renderCollection },
   { id: "trade", label: "Trade", ico: "🤝", render: renderTrade },
   { id: "parents", label: "Parents", ico: "🔒", render: renderParents },

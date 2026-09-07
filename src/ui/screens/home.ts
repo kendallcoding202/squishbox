@@ -269,7 +269,7 @@ function buddySection(): HTMLElement | null {
       ),
     ),
   );
-  onTap(card, () => detail(c));
+  onTap(card, () => { location.hash = "buddy"; });
   return h("div", null, h("h2", null, "My buddy"), card);
 }
 

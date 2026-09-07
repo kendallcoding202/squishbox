@@ -27,22 +27,43 @@ export interface BuddyState {
 
 /** Unlocked purely by turning up. Never taken away, never expires. */
 export interface Milestone {
+  /** Keys the CSS animation for a trick, or the room decoration for an accessory. */
+  id: string;
   visits: number;
   label: string;
   /** What the kid actually sees change. */
   kind: "trick" | "accessory" | "voice";
+  /** Short imperative for the trick button. Tricks only. */
+  button?: string;
+  /** What appears in the room. Accessories only. */
+  decor?: string;
 }
 
 export const MILESTONES: readonly Milestone[] = [
-  { visits: 1, label: "settled in", kind: "trick" },
-  { visits: 2, label: "learned to bounce", kind: "trick" },
-  { visits: 3, label: "found a tiny hat", kind: "accessory" },
-  { visits: 5, label: "worked out a somersault", kind: "trick" },
-  { visits: 7, label: "invented a new squeak", kind: "voice" },
-  { visits: 10, label: "learned to wobble in a circle", kind: "trick" },
-  { visits: 14, label: "grew a little sprout", kind: "accessory" },
-  { visits: 21, label: "can do a backflip", kind: "trick" },
+  { id: "settle", visits: 1, label: "settled in", kind: "trick", button: "Wiggle" },
+  { id: "bounce", visits: 2, label: "learned to bounce", kind: "trick", button: "Bounce" },
+  { id: "hat", visits: 3, label: "found a tiny hat", kind: "accessory", decor: "🎩" },
+  { id: "somersault", visits: 5, label: "worked out a somersault", kind: "trick", button: "Somersault" },
+  { id: "squeak", visits: 7, label: "invented a new squeak", kind: "voice" },
+  { id: "wobble", visits: 10, label: "learned to wobble in a circle", kind: "trick", button: "Wobble" },
+  { id: "sprout", visits: 14, label: "grew a little sprout", kind: "accessory", decor: "🌱" },
+  { id: "backflip", visits: 21, label: "can do a backflip", kind: "trick", button: "Backflip" },
 ];
+
+/** Tricks the kid can actually press a button and watch. */
+export function tricks(b: BuddyState): Milestone[] {
+  return reached(b).filter((m) => m.kind === "trick");
+}
+
+/** Things that have turned up in the room. */
+export function decorations(b: BuddyState): Milestone[] {
+  return reached(b).filter((m) => m.kind === "accessory");
+}
+
+/** The buddy finds its own voice at 7 visits: a slightly rounder, lower squeak. */
+export function hasOwnVoice(b: BuddyState): boolean {
+  return reached(b).some((m) => m.kind === "voice");
+}
 
 /**
  * What the buddy got up to between visits. Every line is something *good* that happened,
