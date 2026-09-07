@@ -1,0 +1,10 @@
+node_modules
+.git
+.github
+ios
+dist
+store
+server/dev.db
+server/dist
+*.log
+.DS_Store
