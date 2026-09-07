@@ -190,9 +190,12 @@ export function dumplingSvg(c: Character): SVGSVGElement {
 }
 
 /** A squishable dumpling: press and drag to squash, release for a springy wobble. */
-export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean } = {}): HTMLElement {
+export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean; fullSquish?: boolean; inHorizontalScroller?: boolean } = {}): HTMLElement {
   const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingSvg(c));
   const wrap = h("div", { class: "dumpling", style: `width:${size}px;height:${size}px` }, inner);
-  attachSquish(wrap, { size, rarity: c.rarity, voice: (c.id.charCodeAt(1) * 7 + c.id.charCodeAt(2)) % 12 });
+  attachSquish(wrap, {
+    size, rarity: c.rarity, voice: (c.id.charCodeAt(1) * 7 + c.id.charCodeAt(2)) % 12,
+    fullSquish: opts.fullSquish, inHorizontalScroller: opts.inHorizontalScroller,
+  });
   return wrap;
 }

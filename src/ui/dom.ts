@@ -32,6 +32,19 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+/**
+ * A tap, not a squish. Dumplings squish on press and drag, so only a quick, still
+ * pointer counts as "open this one". Enter and Space work too.
+ */
+export function onTap(el: HTMLElement, fn: () => void): void {
+  let downAt = 0, downX = 0, downY = 0;
+  el.addEventListener("pointerdown", (e) => { downAt = Date.now(); downX = e.clientX; downY = e.clientY; });
+  el.addEventListener("pointerup", (e) => {
+    if (Date.now() - downAt < 400 && Math.hypot(e.clientX - downX, e.clientY - downY) < 8) fn();
+  });
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } });
+}
+
 let toastTimer = 0;
 export function toast(text: string): void {
   document.querySelector(".toast")?.remove();

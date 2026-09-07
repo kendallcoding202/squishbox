@@ -11,6 +11,14 @@ export interface SquishOptions {
   /** 0..11, picks the squeak pitch so each character sounds a little different. */
   voice: number;
   onPress?: () => void;
+  /**
+   * Take the whole gesture, including vertical drags. Only for a dumpling that is the
+   * star of a modal; in a scrolling list it would eat the scroll, and a grid of them
+   * leaves nowhere to start one.
+   */
+  fullSquish?: boolean;
+  /** Inside a sideways-scrolling row, so a horizontal swipe must scroll rather than squish. */
+  inHorizontalScroller?: boolean;
 }
 
 const STIFFNESS = 260;
@@ -18,7 +26,9 @@ const DAMPING = 11;
 
 export function attachSquish(el: HTMLElement, opts: SquishOptions): void {
   el.style.transformOrigin = "50% 92%";
-  el.style.touchAction = "none";
+  // Leave the page's own scrolling to the browser; a press or an off-axis drag still squishes.
+  // pan-y alone would trap a sideways swipe, which strands the end of a horizontal row.
+  el.style.touchAction = opts.fullSquish ? "none" : opts.inHorizontalScroller ? "pan-x pan-y" : "pan-y";
 
   // Current and target deformation. sx/sy are scale, tx/ty translation in px, sk skew in degrees.
   const cur = { sx: 1, sy: 1, tx: 0, ty: 0, sk: 0 };

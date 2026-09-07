@@ -68,3 +68,47 @@ describe("persistence", () => {
     expect(loadState(null).coins).toBe(STARTING_COINS);
   });
 });
+
+describe("loadState survives a damaged save", () => {
+  // A spread only fills in missing keys, so a present-but-wrong-typed field used to go
+  // straight through and throw on the first render: a blank screen with the Parent
+  // corner (and its reset) unreachable.
+  const load = (save: string) => loadState({ getItem: () => save });
+  const base = {
+    version: 1, coins: 50, inventory: {}, shelf: [], nicknames: {}, log: [],
+    boxesToday: { day: "2026-09-06", count: 0 }, rewardsClaimed: [], celebrated: [], pity: 0,
+  };
+  const withField = (patch: Record<string, unknown>) => JSON.stringify({ ...base, ...patch });
+
+  it("replaces wrong-typed collections with the defaults", () => {
+    expect(load(withField({ inventory: null })).inventory).toEqual({});
+    expect(load(withField({ inventory: "nope" })).inventory).toEqual({});
+    expect(load(withField({ shelf: null })).shelf).toEqual([]);
+    expect(load(withField({ log: null })).log).toEqual([]);
+    expect(load(withField({ nicknames: 7 })).nicknames).toEqual({});
+    expect(load(withField({ rewardsClaimed: null })).rewardsClaimed).toEqual([]);
+    expect(load(withField({ boxesToday: null })).boxesToday.count).toBe(0);
+  });
+
+  it("replaces non-numeric coins rather than letting them turn into NaN", () => {
+    expect(load(withField({ coins: "abc" })).coins).toBe(STARTING_COINS);
+    expect(load(withField({ coins: null })).coins).toBe(STARTING_COINS);
+  });
+
+  it("keeps a daily box cap that would otherwise block every box forever", () => {
+    expect(load(withField({ parent: { dailyBoxCap: null } })).parent.dailyBoxCap).toBeGreaterThan(0);
+    expect(load(withField({ parent: { dailyBoxCap: 0 } })).parent.dailyBoxCap).toBeGreaterThan(0);
+  });
+
+  it("still keeps good values", () => {
+    const s = load(withField({ coins: 123, inventory: { s1c01: 2 } }));
+    expect(s.coins).toBe(123);
+    expect(s.inventory).toEqual({ s1c01: 2 });
+  });
+});
+
+describe("online trading is off until a grown-up turns it on", () => {
+  it("defaults to off so nothing leaves the device", () => {
+    expect(newState().parent.onlineTrading).toBe(false);
+  });
+});

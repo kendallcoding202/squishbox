@@ -128,10 +128,18 @@ describe("friend trade deliveries", () => {
     expect(s.stats.tradesCompleted).toBe(1);
     expect(s.log[0]?.text).toContain("Ada");
   });
-  it("older saves get onlineTrading on and no net identity", () => {
+  it("a save that never chose gets online trading off, and no net identity", () => {
+    // Fail closed: a save with no stated preference must not start talking to the
+    // trading post. Only a grown-up turning it on in the Parent corner does that.
     const mem = new Map([["squishbox.save.v1", JSON.stringify({ version: 1, parent: { pin: null } })]]);
     const s = loadState({ getItem: (k: string) => mem.get(k) ?? null });
-    expect(s.parent.onlineTrading).toBe(true);
+    expect(s.parent.onlineTrading).toBe(false);
     expect(s.net).toBeNull();
+  });
+
+  it("keeps a grown-up's explicit choice to allow online trading", () => {
+    const mem = new Map([["squishbox.save.v1", JSON.stringify({ version: 1, parent: { pin: null, onlineTrading: true } })]]);
+    const s = loadState({ getItem: (k: string) => mem.get(k) ?? null });
+    expect(s.parent.onlineTrading).toBe(true);
   });
 });

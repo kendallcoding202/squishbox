@@ -1,6 +1,6 @@
 import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type Rarity, type SeriesId } from "../../data/characters";
 import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems } from "../../game/state";
-import { confetti, h, overlay, toast } from "../dom";
+import { confetti, h, onTap, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic } from "../sound";
 import { store } from "../store";
@@ -8,7 +8,8 @@ import { store } from "../store";
 let filter: Rarity | "all" = "all";
 let series: SeriesId = "s1";
 
-function detail(c: Character): void {
+/** The big single-dumpling sheet: name it, shelve it, sell a spare. Also opened from the home screen. */
+export function detail(c: Character): void {
   const info = RARITY_INFO[c.rarity];
   const render = (): HTMLElement => {
     const s = store.state;
@@ -50,7 +51,7 @@ function detail(c: Character): void {
     } }, shelved ? "Take off shelf" : "⭐ Put on shelf");
 
     return h("div", { class: "sheet" },
-      h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true })),
+      h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true, fullSquish: true })),
       h("h2", { style: "margin-top:4px" }, nick ?? c.name),
       h("p", null, nick ? h("span", { class: "muted small" }, `(${c.name}) `) : null, h("span", { class: "badge", style: `background:${info.color}` }, info.label), " ", h("span", { class: "pill" }, `×${count}`)),
       h("p", { class: "muted", style: "margin-top:10px" }, c.flavor),
@@ -96,16 +97,7 @@ export function renderCollection(): HTMLElement {
       art,
       h("div", { class: "name" }, n ? displayName(s, c.id) : "???"),
     );
-    if (n) {
-      // Open details on a tap. A drag (a squish) of more than a few pixels is not a tap.
-      let downAt = 0, downX = 0, downY = 0;
-      tile.addEventListener("pointerdown", (e) => { downAt = Date.now(); downX = e.clientX; downY = e.clientY; });
-      tile.addEventListener("pointerup", (e) => {
-        const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
-        if (Date.now() - downAt < 400 && moved < 8) detail(c);
-      });
-      tile.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") detail(c); });
-    }
+    if (n) onTap(tile, () => detail(c));
     return tile;
   });
 

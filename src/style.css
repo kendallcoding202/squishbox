@@ -103,10 +103,14 @@ p.muted, .muted { color: var(--muted); }
 @keyframes fade { from { opacity: 0; } }
 .sheet { width: 100%; max-width: 440px; max-height: 92vh; overflow: auto; background: var(--card); border-radius: 28px; padding: 22px 20px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes pop { from { transform: scale(0.8); opacity: 0; } }
-.reveal-stage { position: relative; height: 240px; display: flex; align-items: center; justify-content: center; }
+.reveal-stage { position: relative; height: 240px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+/* Anything you can tap to open: the reveal stage, shelf dumplings, the fresh-from-the-steamer row. */
+.tappable { cursor: pointer; touch-action: manipulation; }
+.tappable:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 14px; }
 .reveal-stage .glow { position: absolute; inset: 0; border-radius: 50%; filter: blur(30px); opacity: 0; transition: opacity 0.5s; }
 .reveal-stage .glow.on { opacity: 0.9; }
-.mystery { font-size: 120px; line-height: 1; cursor: pointer; animation: wobble 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+/* touch-action does not inherit: without this iOS can treat fast taps as a double-tap zoom and eat 2 of the 3. */
+.mystery { font-size: 120px; line-height: 1; cursor: pointer; animation: wobble 1.6s ease-in-out infinite; transform-origin: 50% 90%; touch-action: manipulation; -webkit-touch-callout: none; }
 @keyframes wobble { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
 .mystery.hit { animation: hit 0.3s ease; }
 @keyframes hit { 40% { transform: scale(1.25, 0.8); } }
@@ -227,3 +231,15 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .tile .star { position: absolute; top: 6px; left: 6px; font-size: 14px; }
 .grid.locked-series .tile { opacity: 0.55; }
 .grid.locked-series .tile .dumpling { filter: grayscale(1) contrast(0.6) brightness(1.15); }
+
+/* ---- short viewports (phone landscape, iPad split view) ----
+   Last in the file on purpose: the tablet block above matches on width alone, so a
+   landscape phone (>=700px wide, ~390px tall) would otherwise get the iPad's 300px
+   stage and push Done / Open another off the bottom of the screen. */
+@media (max-height: 560px) {
+  .sheet { padding: 14px 16px; }
+  .reveal-stage { height: 150px; }
+  /* the size is inline on the wrapper; squish animates transform, not width/height */
+  .reveal-stage .dumpling { width: 128px !important; height: 128px !important; }
+  .mystery { font-size: 76px; }
+}

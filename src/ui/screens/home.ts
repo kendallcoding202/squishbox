@@ -6,7 +6,8 @@ import {
   boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
   PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, takeNewUnlocks, type OpenResult,
 } from "../../game/state";
-import { confetti, h, overlay, toast } from "../dom";
+import { confetti, h, onTap, overlay, toast } from "../dom";
+import { detail } from "./collection";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic, pop, reveal as revealSound, soundEnabled, thud } from "../sound";
 import { store } from "../store";
@@ -95,9 +96,10 @@ export function startOpen(box: Box): void {
 
   const doReveal = () => {
     mystery.remove();
+    stage.classList.remove("tappable");
     glow.classList.add("on");
     if (c.rarity === "legendary") ov.classList.add("flash");
-    const d = dumplingEl(c, 200, { idle: true });
+    const d = dumplingEl(c, 200, { idle: true, fullSquish: true });
     d.classList.add("reveal-in");
     stage.appendChild(d);
     title.replaceChildren(c.name, result.isNew ? h("span", { class: "newtag" }, "NEW!") : "");
@@ -133,7 +135,9 @@ export function startOpen(box: Box): void {
     }
     if (taps === 3) setTimeout(doReveal, 260);
   };
-  mystery.addEventListener("pointerdown", hit);
+  // The stage takes the taps, not the emoji: it wobbles, and a quick tap that misses it should still count.
+  stage.classList.add("tappable");
+  stage.addEventListener("pointerdown", hit);
   mystery.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") hit(); });
 }
 
@@ -227,7 +231,12 @@ function shelfSection(): HTMLElement {
     items.length === 0
       ? h("div", { class: "shelf empty" }, h("p", { class: "muted small" }, "Your shelf is empty. Tap a dumpling in your Collection and put it on display."))
       : h("div", { class: "shelf" },
-          h("div", { class: "shelf-row" }, ...items.map((c) => h("div", { class: "shelf-item" }, dumplingEl(c, 72, { idle: true }), h("div", { class: "small", style: "font-weight:800" }, displayName(s, c.id))))),
+          h("div", { class: "shelf-row" }, ...items.map((c) => {
+            const item = h("div", { class: "shelf-item tappable", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}, open details` },
+              dumplingEl(c, 72, { idle: true }), h("div", { class: "small", style: "font-weight:800" }, displayName(s, c.id)));
+            onTap(item, () => detail(c));
+            return item;
+          })),
           h("div", { class: "plank" }),
         ),
   );
@@ -282,7 +291,12 @@ export function renderHome(): HTMLElement {
     shelfSection(),
     recentChars.length ? h("div", null,
       h("h2", null, "Fresh from the steamer"),
-      h("div", { class: "row", style: "overflow-x:auto;gap:6px;padding-bottom:4px" }, ...recentChars.map((c) => h("div", { style: "text-align:center" }, dumplingEl(c, 64), h("div", { class: "small muted" }, displayName(s, c.id))))),
+      h("div", { class: "row", style: "overflow-x:auto;gap:6px;padding-bottom:4px" }, ...recentChars.map((c) => {
+        const item = h("div", { class: "tappable", style: "text-align:center", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}, open details` },
+          dumplingEl(c, 64, { inHorizontalScroller: true }), h("div", { class: "small muted" }, displayName(s, c.id)));
+        onTap(item, () => detail(c));
+        return item;
+      })),
     ) : null,
     h("h2", null, "Shop"),
     h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box. Coins are free: no real money in this prototype."),

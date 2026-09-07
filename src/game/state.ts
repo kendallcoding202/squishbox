@@ -71,7 +71,9 @@ export function newState(playerName = "You"): SaveState {
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
-    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10, onlineTrading: true },
+    // Online trading is off until a grown-up turns it on: nothing leaves the device by default,
+    // and no server identity is created before a parent has had any say.
+    parent: { pin: null, tradingEnabled: true, dailyBoxCap: 10, onlineTrading: false },
     bots: {},
     settings: { sound: true },
     pity: 0,
@@ -329,13 +331,28 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
       if (parsed.version === 1) {
         const fresh = newState();
         // Older saves lack newer fields; nested objects are merged so defaults fill in.
-        return {
+        const merged = {
           ...fresh,
           ...parsed,
           stats: { ...fresh.stats, ...(parsed.stats ?? {}) },
           parent: { ...fresh.parent, ...(parsed.parent ?? {}) },
           settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
         } as SaveState;
+        // A spread only fills in what is missing, so a present-but-wrong field would go
+        // straight through and throw on the first render, leaving a blank screen the kid
+        // cannot get out of (the Parent corner reset is unreachable). Take the default instead.
+        const obj = (v: unknown): boolean => !!v && typeof v === "object" && !Array.isArray(v);
+        if (!obj(merged.inventory)) merged.inventory = fresh.inventory;
+        if (!obj(merged.nicknames)) merged.nicknames = fresh.nicknames;
+        if (!obj(merged.boxesToday)) merged.boxesToday = fresh.boxesToday;
+        if (!Array.isArray(merged.log)) merged.log = fresh.log;
+        if (!Array.isArray(merged.shelf)) merged.shelf = fresh.shelf;
+        if (!Array.isArray(merged.rewardsClaimed)) merged.rewardsClaimed = fresh.rewardsClaimed;
+        if (!Array.isArray(merged.celebrated)) merged.celebrated = fresh.celebrated;
+        if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
+        if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;
+        if (!Number.isFinite(merged.parent.dailyBoxCap) || merged.parent.dailyBoxCap < 1) merged.parent.dailyBoxCap = fresh.parent.dailyBoxCap;
+        return merged;
       }
     }
   } catch {
