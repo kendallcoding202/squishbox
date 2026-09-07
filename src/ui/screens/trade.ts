@@ -1,7 +1,7 @@
 import { BOTS, BOT_BY_ID, botAccepts, botProposal, type Bot } from "../../game/bots";
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { systemRng } from "../../game/rng";
-import { displayName, log, NICKNAME_MAX, seriesUnlocked, type Inventory } from "../../game/state";
+import { displayName, log, NICKNAME_MAX, seriesUnlocked, type Inventory, latchUnlocks } from "../../game/state";
 import { assess, canConfirm, confirm, createTrade, execute, owns, ownsSpares, setOffer, type SideKey, type Trade } from "../../game/trade";
 import { api, ApiError, type Friend } from "../../net/api";
 import { ensureRegistered, net, syncNow, token } from "../../net/sync";
@@ -200,6 +200,7 @@ async function onConfirm(): Promise<void> {
       const r = execute(t, store.state.inventory, botInv);
       store.update((s) => {
         s.inventory = r.invA;
+        latchUnlocks(s); // a trade can be the dumpling that earns the next series
         s.bots[bot.id] = r.invB;
         s.stats.tradesCompleted += 1;
         const gave = t.a.items.map((id) => CHARACTER_BY_ID.get(id)?.name).join(", ") || "nothing";

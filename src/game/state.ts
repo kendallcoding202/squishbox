@@ -31,6 +31,8 @@ export interface SaveState {
   streak: number;
   /** Latest wall clock this save has ever seen. The day ratchets forward, never back. */
   clockHighWater: number;
+  /** Series the collection has earned. Latched, so a shrinking collection can't take one back. */
+  unlockedSeries: SeriesId[];
   boxesToday: { day: string; count: number };
   stats: { boxesOpened: number; coinsEarned: number; coinsSpent: number; tradesCompleted: number; tradesDeclined: number; coinsFromSales: number };
   log: LogEntry[];
@@ -71,6 +73,7 @@ export function newState(playerName = "You"): SaveState {
     lastDailyClaim: null,
     streak: 0,
     clockHighWater: 0,
+    unlockedSeries: [],
     boxesToday: { day: "", count: 0 },
     stats: { boxesOpened: 0, coinsEarned: STARTING_COINS, coinsSpent: 0, tradesCompleted: 0, tradesDeclined: 0, coinsFromSales: 0 },
     log: [],
@@ -97,6 +100,7 @@ export function applyDelivery(state: SaveState, d: { partnerName: string; give: 
     state.inventory[id] = have - 1;
   }
   for (const id of d.get) if (CHARACTER_BY_ID.has(id)) state.inventory[id] = (state.inventory[id] ?? 0) + 1;
+  latchUnlocks(state);
   state.stats.tradesCompleted += 1;
   const gave = d.give.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
   const got = d.get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
@@ -112,7 +116,23 @@ export function ownedInSeries(inv: Inventory, id: SeriesId): number {
 export function seriesUnlocked(state: SaveState, id: SeriesId): boolean {
   const s = SERIES_BY_ID.get(id);
   if (!s || !s.unlockFrom) return true;
+  if (state.unlockedSeries.includes(id)) return true; // earned once, kept for good
   return ownedInSeries(state.inventory, s.unlockFrom) >= s.unlockAt;
+}
+
+/**
+ * Write down every series the collection currently earns, so it survives the collection
+ * shrinking. Unlocking was derived live from the count, so selling a spare or trading a
+ * dumpling away could drop a kid back under the bar — re-locking Series 2 and showing the
+ * Series 2 dumplings they already owned as "???". Taking something back that a kid earned
+ * is the worst version of this bug.
+ */
+export function latchUnlocks(state: SaveState): void {
+  for (const s of SERIES) {
+    if (!s.unlockFrom) continue;
+    if (state.unlockedSeries.includes(s.id)) continue;
+    if (ownedInSeries(state.inventory, s.unlockFrom) >= s.unlockAt) state.unlockedSeries.push(s.id);
+  }
 }
 
 /** Progress toward unlocking a series as [have, need]. */
@@ -253,6 +273,7 @@ export function openBox(state: SaveState, box: Box, rng: Rng, wall: Date): OpenR
   state.boxesToday = { day: key, count: boxesOpenedToday(state, today) + 1 };
   const isNew = !state.inventory[c.id];
   state.inventory[c.id] = (state.inventory[c.id] ?? 0) + 1;
+  latchUnlocks(state);
   log(state, "open", `Opened ${box.name}: ${c.name} (${c.rarity})${isNew ? " NEW" : ""}${lucky ? " lucky" : ""}`, today.getTime());
   return { ok: true, characterId: c.id, isNew, lucky };
 }
@@ -403,6 +424,8 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
           if (!CHARACTER_BY_ID.has(id) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[id];
         }
         merged.shelf = merged.shelf.filter((id) => CHARACTER_BY_ID.has(id));
+        if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
+        latchUnlocks(merged); // saves from before the latch: bank what the collection already earns
         if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
         if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;
         if (!Number.isFinite(merged.parent.dailyBoxCap) || merged.parent.dailyBoxCap < 1) merged.parent.dailyBoxCap = fresh.parent.dailyBoxCap;
