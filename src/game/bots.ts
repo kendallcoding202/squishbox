@@ -1,5 +1,6 @@
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO } from "../data/characters";
 import { BOX_BY_ID, type Box } from "../data/boxes";
+import { itemKey, rollFinish } from "./finishes";
 import { rollBox } from "./odds";
 import type { Inventory } from "./state";
 import { assess, createTrade, setOffer, type Trade } from "./trade";
@@ -35,7 +36,10 @@ export function seedBotInventory(bot: Bot): Inventory {
     const b = BOX_BY_ID.get(box) as Box;
     for (let i = 0; i < n; i++) {
       const c = rollBox(b, rng);
-      inv[c.id] = (inv[c.id] ?? 0) + 1;
+      // Neighbours open the same boxes a kid does, finishes included. Their trades stay on
+      // the device, so a glittery neighbour offer can never reach a build that can't read it.
+      const key = itemKey(c.id, rollFinish(rng));
+      inv[key] = (inv[key] ?? 0) + 1;
     }
   }
   return inv;

@@ -109,6 +109,64 @@ export function reveal(rarity: Rarity): void {
   }
 }
 
+/**
+ * Shaped noise. `noise` above is a one-shot highpass burst that decays instantly, which is
+ * right for a pop but wrong for anything you are supposed to sit inside: a steamer hiss needs
+ * a slow swell and a band, not a click.
+ */
+function hiss(c: AudioContext, t0: number, dur: number, gain: number, centre: number, q = 0.8): void {
+  const len = Math.floor(c.sampleRate * dur);
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource(); src.buffer = buf;
+  const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = centre; f.Q.value = q;
+  const g = c.createGain();
+  // swell in, hold, fall away — the shape of a lid being lifted off a basket
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + dur * 0.25);
+  g.gain.exponentialRampToValueAtTime(gain * 0.6, t0 + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f).connect(g).connect(c.destination);
+  src.start(t0); src.stop(t0 + dur + 0.02);
+}
+
+/**
+ * Bamboo and paper. Each squish of the box gets a handful of tiny crackles at slightly
+ * different pitches — the ear reads irregularity as a real material, and a single clean
+ * burst reads as a UI blip.
+ */
+export function crinkle(step = 1): void {
+  const c = ac(); if (!c) return;
+  const now = c.currentTime;
+  const grains = 5 + step * 2;
+  for (let i = 0; i < grains; i++) {
+    const t = now + Math.random() * 0.16;
+    noise(c, t, 0.012 + Math.random() * 0.02, 0.05 + step * 0.015, 1800 + Math.random() * 2600);
+  }
+  // the basket itself flexing under the squish
+  tone(c, 150 + step * 18, now, 0.09, "triangle", 0.03, 110 + step * 12);
+}
+
+/** The lid coming off: a woody knock, then steam escaping for a moment. */
+export function lidLift(): void {
+  const c = ac(); if (!c) return;
+  const now = c.currentTime;
+  tone(c, 210, now, 0.12, "triangle", 0.07, 130);
+  noise(c, now, 0.05, 0.12, 900);
+  hiss(c, now + 0.05, 0.9, 0.05, 2600, 0.7);
+  hiss(c, now + 0.12, 0.7, 0.03, 5200, 1.2);
+}
+
+/** A finish catching the light, played just after the rarity chime. Bright, short, not a fanfare. */
+export function shimmer(steps: number): void {
+  const c = ac(); if (!c) return;
+  const now = c.currentTime;
+  const notes = [1568, 2093, 2637, 3136].slice(0, Math.max(2, steps));
+  notes.forEach((f, i) => tone(c, f, now + i * 0.06, 0.3, "sine", 0.05));
+  hiss(c, now, 0.5, 0.02, 7000, 2);
+}
+
 export function success(): void {
   const c = ac(); if (!c) return;
   const now = c.currentTime;

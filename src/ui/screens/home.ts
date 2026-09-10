@@ -1,15 +1,16 @@
 import { boxesInSeries, BOXES, type Box } from "../../data/boxes";
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type SeriesId } from "../../data/characters";
 import { momentText, nextMilestone, reached } from "../../game/buddy";
+import { characterIdOf, describeFinishOdds, FINISH_INFO, finishOf, type Finish } from "../../game/finishes";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
   boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
   markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
-import { confetti, h, onTap, overlay, toast } from "../dom";
+import { announce, confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
 import { dumplingEl } from "../dumpling";
-import { coin, haptic, pop, reveal as revealSound, soundEnabled, thud } from "../sound";
+import { coin, crinkle, haptic, lidLift, pop, reveal as revealSound, shimmer, soundEnabled, thud } from "../sound";
 import { store } from "../store";
 
 let shopSeries: SeriesId = "s1";
@@ -36,12 +37,21 @@ function oddsTable(box: Box): HTMLElement {
     const info = RARITY_INFO[rarity];
     return [
       h("i", { class: "swatch", style: `background:${info.color}` }),
-      h("div", { class: "row" }, h("span", { style: "min-width:78px;font-weight:700" }, info.label), h("div", { class: "bar grow" }, h("i", { style: `width:${percent}%;background:${info.color}` }))),
+      h("div", { class: "row" }, h("span", { style: "min-width:78px;font-weight:700" }, info.label), h("div", { class: "bar grow", "aria-hidden": "true" }, h("i", { style: `width:${percent}%;background:${info.color}` }))),
       h("span", { class: "pct" }, `${percent}%`),
       h("span", { class: "onein" }, oneIn ? `1 in ${oneIn}` : "never"),
     ];
   });
-  return h("div", { class: "odds", "aria-label": `Odds for ${box.name}` }, ...rows);
+  const finishRows = describeFinishOdds()
+    .filter((r) => r.finish !== "plain")
+    .map((r) => h("li", null, `${r.label}: ${r.percent}%${r.oneIn ? ` (1 in ${r.oneIn})` : ""}`));
+  return h("div", null,
+    h("div", { class: "odds", "aria-label": `Odds for ${box.name}` }, ...rows),
+    h("div", { class: "finish-odds", "aria-label": "Chance of a special finish" },
+      h("p", { class: "muted small", style: "margin:8px 0 4px" }, "Any dumpling can come out with a finish on it:"),
+      h("ul", { class: "muted small finish-odds-list" }, ...finishRows),
+    ),
+  );
 }
 
 function boxCard(box: Box): HTMLElement {
@@ -78,10 +88,10 @@ export function startOpen(box: Box): void {
   const rarePlus = c.rarity === "rare" || c.rarity === "epic" || c.rarity === "legendary";
 
   let taps = 0;
-  const dots = [0, 1, 2].map(() => h("i"));
-  const glow = h("div", { class: "glow", style: `background:${info.glow}` });
+  const dots = [0, 1, 2].map(() => h("i", { "aria-hidden": "true" }));
+  const glow = h("div", { class: "glow", "aria-hidden": "true", style: `background:${info.glow}` });
   const mystery = h("div", { class: "mystery", role: "button", "aria-label": "Squish the box", tabindex: "0" }, box.emoji);
-  const steam = h("div", { class: "steam" });
+  const steam = h("div", { class: "steam", "aria-hidden": "true" });
   const stage = h("div", { class: "reveal-stage" }, glow, steam, mystery);
   const title = h("h2", { style: "margin:6px 0 0" }, result.lucky ? "Lucky box!" : "Squish it!");
   const sub = h("p", { class: "muted" }, result.lucky ? "A Rare or better is guaranteed. Tap three times!" : "Tap the box three times");
@@ -102,22 +112,31 @@ export function startOpen(box: Box): void {
     stage.classList.remove("tappable");
     glow.classList.add("on");
     if (c.rarity === "legendary") ov.classList.add("flash");
-    const d = dumplingEl(c, 200, { idle: true, fullSquish: true });
+    const d = dumplingEl(c, 200, { idle: true, fullSquish: true, finish: result.finish });
     d.classList.add("reveal-in");
     stage.appendChild(d);
-    title.replaceChildren(c.name, result.isNew ? h("span", { class: "newtag" }, "NEW!") : "");
+    const finishLabel = result.finish === "plain" ? "" : `${FINISH_INFO[result.finish].label} `;
+    title.replaceChildren(`${finishLabel}${c.name}`, result.isNew ? h("span", { class: "newtag" }, "NEW!") : "");
     sub.replaceChildren(
       h("span", { class: "badge", style: `background:${info.color}` }, info.label), " ",
+      result.finish === "plain" ? "" : h("span", { class: `finish-tag ${result.finish}` }, FINISH_INFO[result.finish].label), " ",
       h("span", { class: "muted small" }, c.flavor),
     );
     pop();
     setTimeout(() => revealSound(c.rarity), 120);
+    if (result.finish !== "plain") {
+      const steps = result.finish === "gold" ? 4 : result.finish === "rainbow" ? 3 : 2;
+      setTimeout(() => shimmer(steps), 420);
+      confetti(result.finish === "gold" ? ["#ffd23f", "#fff3c4", "#fff"] : result.finish === "rainbow" ? ["#ff9aa2", "#ffd66b", "#a8e6a1", "#8fd3ff", "#d3a4ff"] : ["#e7d9ff", "#fff"], result.finish === "gold" ? 90 : 55);
+    }
     haptic(rarePlus ? "success" : "medium");
     if (c.rarity === "epic" || c.rarity === "legendary") confetti([info.color, info.glow, "#ff8f5e", "#fff"], c.rarity === "legendary" ? 160 : 70);
     const again = h("button", { class: "btn", onclick: () => { ov.remove(); startOpen(box); } }, `Open another · ${box.price}`);
     const s = store.state;
     if (s.coins < box.price || boxesOpenedToday(s, new Date()) >= s.parent.dailyBoxCap) again.disabled = true;
     footer.append(h("button", { class: "btn secondary", onclick: () => ov.remove() }, "Done"), again);
+    const finishSay = result.finish === "plain" ? "" : `${FINISH_INFO[result.finish].label} `;
+    announce(`${finishSay}${c.name}. ${info.label}.${result.isNew ? " New for your collection!" : ""} ${c.flavor}`);
     if (result.isNew) checkRewards();
   };
 
@@ -125,18 +144,27 @@ export function startOpen(box: Box): void {
     if (taps >= 3) return;
     taps++;
     dots[taps - 1]?.classList.add("on");
+    mystery.setAttribute("aria-label", taps < 3 ? `Squish the box, ${3 - taps} more` : "Opening the box");
     mystery.classList.remove("hit1", "hit2", "hit3");
     void mystery.offsetWidth; // restart animation
     mystery.classList.add(`hit${taps}`);
     thud(0.6 + taps * 0.2);
+    crinkle(taps);
     haptic(taps === 3 ? "heavy" : "light");
-    puff(2 + taps * 2);
+    puff(2 + taps * 3);
     if (taps === 2 && rarePlus) {
       // tease: the glow leaks out before the reveal for a rare or better
       glow.classList.add("tease");
       sub.textContent = "Ooh… something's glowing";
     }
-    if (taps === 3) setTimeout(doReveal, 260);
+    if (taps === 3) {
+      lidLift();
+      mystery.classList.add("opening");
+      puff(14);
+      setTimeout(() => puff(8), 180);
+      sub.textContent = "Lifting the lid…";
+      setTimeout(doReveal, 620);
+    }
   };
   // The stage takes the taps, not the emoji: it wobbles, and a quick tap that misses it should still count.
   stage.classList.add("tappable");
@@ -155,7 +183,7 @@ function luckyMeter(): HTMLElement {
   const s = store.state;
   const n = Math.min(s.pity, PITY_AT - 1);
   const next = luckyNext(s);
-  const segs = Array.from({ length: PITY_AT }, (_, i) => h("i", { class: i < n ? "on" : i === n && next ? "on" : "" }));
+  const segs = Array.from({ length: PITY_AT }, (_, i) => h("i", { "aria-hidden": "true", class: i < n ? "on" : i === n && next ? "on" : "" }));
   return h("div", { class: "card" },
     h("div", { class: "row between" },
       h("div", { class: "grow" },
@@ -164,7 +192,12 @@ function luckyMeter(): HTMLElement {
       ),
       h("span", { class: "pill" }, `${next ? PITY_AT : n} / ${PITY_AT}`),
     ),
-    h("div", { class: "meter" + (next ? " full" : "") }, ...segs),
+    h("div", {
+      class: "meter" + (next ? " full" : ""),
+      role: "progressbar", "aria-label": "Lucky meter",
+      "aria-valuemin": "0", "aria-valuemax": String(PITY_AT), "aria-valuenow": String(next ? PITY_AT : n),
+      "aria-valuetext": next ? "Full. Your next box is guaranteed Rare or better." : `${n} of ${PITY_AT} boxes`,
+    }, ...segs),
   );
 }
 
@@ -179,7 +212,11 @@ function albumCard(): HTMLElement {
     return h("div", { class: "reward " + status },
       h("div", { class: "grow" },
         h("div", { class: "row between" }, h("b", { class: "small" }, r.label), h("span", { class: "small muted" }, status === "claimed" ? "✓ claimed" : `${have} / ${need}`)),
-        h("div", { class: "bar" }, h("i", { style: `width:${pct}%` })),
+        h("div", {
+          class: "bar", role: "progressbar", "aria-label": r.label,
+          "aria-valuemin": "0", "aria-valuemax": String(need), "aria-valuenow": String(have),
+          "aria-valuetext": status === "claimed" ? `${r.label}, claimed` : `${have} of ${need}`,
+        }, h("i", { "aria-hidden": "true", style: `width:${pct}%` })),
       ),
       status === "ready"
         ? h("button", { class: "btn sm good", onclick: () => { let got = 0; store.update((st) => { got = claimReward(st, r.id, Date.now()); }); coin(); haptic("success"); toast(`+${got} coins!`); confetti(["#3fae7a", "#ffd23f", "#fff"], 40); } }, `+${r.coins}`)
@@ -275,16 +312,20 @@ function buddySection(): HTMLElement | null {
 
 function shelfSection(): HTMLElement {
   const s = store.state;
-  const items = s.shelf.map((id) => CHARACTER_BY_ID.get(id)).filter(Boolean) as Character[];
+  // Shelf entries are item keys, so a gold one on display stays gold.
+  const items = s.shelf
+    .map((key) => ({ c: CHARACTER_BY_ID.get(characterIdOf(key)), finish: finishOf(key), key }))
+    .filter((x): x is { c: Character; finish: Finish; key: string } => !!x.c);
   return h("div", null,
     h("h2", null, "My shelf"),
     items.length === 0
       ? h("div", { class: "shelf empty" }, h("p", { class: "muted small" }, "Your shelf is empty. Tap a dumpling in your Collection and put it on display."))
       : h("div", { class: "shelf" },
-          h("div", { class: "shelf-row" }, ...items.map((c) => {
-            const item = h("div", { class: "shelf-item tappable", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}, open details` },
-              dumplingEl(c, 72, { idle: true }), h("div", { class: "small", style: "font-weight:800" }, displayName(s, c.id)));
-            onTap(item, () => detail(c));
+          h("div", { class: "shelf-row" }, ...items.map(({ c, finish }) => {
+            const finishNote = finish === "plain" ? "" : `, ${FINISH_INFO[finish].label.toLowerCase()}`;
+            const item = h("div", { class: "shelf-item tappable", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}${finishNote}, open details` },
+              dumplingEl(c, 72, { idle: true, finish, decorative: true }), h("div", { class: "small", style: "font-weight:800" }, displayName(s, c.id)));
+            onTap(item, () => detail(c, finish));
             return item;
           })),
           h("div", { class: "plank" }),

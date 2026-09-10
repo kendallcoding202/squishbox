@@ -1,4 +1,5 @@
 import { CHARACTER_BY_ID, RARITY_INFO } from "../data/characters";
+import { FINISH_INFO, parseItem } from "./finishes";
 import type { Inventory } from "./state";
 
 /**
@@ -119,9 +120,10 @@ export function execute(
 }
 
 export function itemsValue(items: string[]): number {
-  return items.reduce((sum, id) => {
-    const c = CHARACTER_BY_ID.get(id);
-    return sum + (c ? RARITY_INFO[c.rarity].value : 0);
+  return items.reduce((sum, key) => {
+    const parsed = parseItem(key);
+    const c = parsed && CHARACTER_BY_ID.get(parsed.characterId);
+    return sum + (c && parsed ? RARITY_INFO[c.rarity].value * FINISH_INFO[parsed.finish].value : 0);
   }, 0);
 }
 

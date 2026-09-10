@@ -1,5 +1,6 @@
 import type { Character, Face, Hat, Pattern, Shape } from "../data/characters";
 import { RARITY_INFO } from "../data/characters";
+import { FINISH_INFO, type Finish } from "../game/finishes";
 import { h } from "./dom";
 import { attachSquish } from "./squish";
 
@@ -141,27 +142,59 @@ function pattern(kind: Pattern, edge: string, clipId: string): SVGElement[] {
 }
 
 /** Build the SVG for a character. Same character always draws the same. */
-export function dumplingSvg(c: Character): SVGSVGElement {
-  const svg = s("svg", { viewBox: "0 0 100 100", role: "img", "aria-label": c.name }) as SVGSVGElement;
+/** Colours for the gradient a finish lays over the body. Plain has none. */
+const FINISH_STOPS: Record<Exclude<Finish, "plain">, { stops: string[]; opacity: number; glow: string }> = {
+  glitter: { stops: ["#ffffff", "#e7d9ff", "#ffffff"], opacity: 0.3, glow: "#e7d9ff" },
+  rainbow: { stops: ["#ff9aa2", "#ffd66b", "#a8e6a1", "#8fd3ff", "#d3a4ff"], opacity: 0.5, glow: "#ffc8f0" },
+  gold: { stops: ["#fff3c4", "#f5c542", "#c98a12"], opacity: 0.85, glow: "#ffd23f" },
+};
+
+/** Where the sparkles sit on a glittery or gold dumpling. Kept off the middle so the face stays readable. */
+const SPARKLES: readonly (readonly [number, number, number])[] = [
+  [26, 34, 3], [72, 38, 2.4], [80, 58, 2.8], [20, 58, 2.2], [58, 24, 2], [40, 80, 2.4],
+];
+
+export function dumplingSvg(c: Character, finish: Finish = "plain"): SVGSVGElement {
+  const label = finish === "plain" ? c.name : `${FINISH_INFO[finish].label} ${c.name}`;
+  const svg = s("svg", { viewBox: "0 0 100 100", role: "img", "aria-label": label }) as SVGSVGElement;
   const ink = "#2b2118";
   const edge = darken(c.body, 0.22);
   const glow = RARITY_INFO[c.rarity].glow;
   const shape = SHAPES[c.shape] ?? SHAPES.round;
-  const clipId = `dclip${++clipSeq}`;
+  const seq = ++clipSeq;
+  const clipId = `dclip${seq}`;
+  const gradId = `dgrad${seq}`;
 
   const defs = s("defs", {});
   const clip = s("clipPath", { id: clipId });
   clip.appendChild(s("path", { d: shape.d }));
   defs.appendChild(clip);
+  if (finish !== "plain") {
+    const spec = FINISH_STOPS[finish];
+    const grad = s("linearGradient", { id: gradId, x1: 0, y1: 0, x2: 1, y2: 1 });
+    spec.stops.forEach((color, i) => {
+      grad.appendChild(s("stop", { offset: `${(i / (spec.stops.length - 1)) * 100}%`, "stop-color": color }));
+    });
+    defs.appendChild(grad);
+  }
   svg.appendChild(defs);
 
   if (c.rarity === "epic" || c.rarity === "legendary") {
     svg.appendChild(s("ellipse", { cx: 50, cy: 62, rx: 46, ry: 38, fill: glow, opacity: 0.55 }));
   }
+  // A finish glows too, so a gold common still reads as something special on a shelf.
+  if (finish !== "plain") {
+    svg.appendChild(s("ellipse", { cx: 50, cy: 62, rx: 46, ry: 38, fill: FINISH_STOPS[finish].glow, opacity: finish === "glitter" ? 0.3 : 0.5 }));
+  }
   svg.appendChild(s("ellipse", { cx: 50, cy: 90, rx: 30, ry: 5, fill: "rgba(0,0,0,0.08)" }));
   // body
   svg.appendChild(s("path", { d: shape.d, fill: c.body, stroke: edge, "stroke-width": 2.5 }));
   for (const el of pattern(c.pattern, edge, clipId)) svg.appendChild(el);
+  // The finish washes over the body but goes under the face, so the dumpling still looks
+  // like itself — a gold Taro has to be recognisable as Taro or the collection stops reading.
+  if (finish !== "plain") {
+    svg.appendChild(s("path", { d: shape.d, fill: `url(#${gradId})`, opacity: FINISH_STOPS[finish].opacity }));
+  }
   // pleats fanning from the top knot
   const n = Math.max(3, Math.min(7, c.pleats));
   const top = shape.top;
@@ -186,13 +219,29 @@ export function dumplingSvg(c: Character): SVGSVGElement {
       svg.appendChild(s("path", { d: `M${x} ${y - 5} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 z`, fill: "#ffd23f" }));
     }
   }
+  if (finish === "glitter" || finish === "gold") {
+    const spark = s("g", { "clip-path": `url(#${clipId})`, class: "sparkles" });
+    SPARKLES.forEach(([x, y, r], i) => {
+      spark.appendChild(s("path", {
+        d: `M${x} ${y - r} l${r * 0.4} ${r * 0.6} l${r * 0.6} ${r * 0.4} l-${r * 0.6} ${r * 0.4} l-${r * 0.4} ${r * 0.6} l-${r * 0.4} -${r * 0.6} l-${r * 0.6} -${r * 0.4} l${r * 0.6} -${r * 0.4} z`,
+        fill: finish === "gold" ? "#fff6d0" : "#ffffff",
+        opacity: 0.9,
+        style: `animation-delay:${(i * 0.35).toFixed(2)}s`,
+      }));
+    });
+    svg.appendChild(spark);
+  }
   return svg;
 }
 
 /** A squishable dumpling: press and drag to squash, release for a springy wobble. */
-export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean; fullSquish?: boolean; inHorizontalScroller?: boolean } = {}): HTMLElement {
-  const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingSvg(c));
-  const wrap = h("div", { class: "dumpling", style: `width:${size}px;height:${size}px` }, inner);
+export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean; fullSquish?: boolean; inHorizontalScroller?: boolean; finish?: Finish; decorative?: boolean } = {}): HTMLElement {
+  const finish = opts.finish ?? "plain";
+  const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingSvg(c, finish));
+  // Inside a tile that already carries its own label, the picture is decoration: without this
+  // a reader says the dumpling's name twice, once for the tile and once for the drawing.
+  const wrap = h("div", { class: `dumpling${finish === "plain" ? "" : ` finish-${finish}`}`, style: `width:${size}px;height:${size}px` }, inner);
+  if (opts.decorative) wrap.setAttribute("aria-hidden", "true");
   attachSquish(wrap, {
     size, rarity: c.rarity, voice: (c.id.charCodeAt(1) * 7 + c.id.charCodeAt(2)) % 12,
     fullSquish: opts.fullSquish, inHorizontalScroller: opts.inHorizontalScroller,

@@ -14,7 +14,11 @@
     <title>Squishbox</title>
   </head>
   <body>
-    <div id="app" aria-live="polite"></div>
+    <!-- Not a live region. Every screen change rebuilds this whole subtree, so aria-live here
+         made VoiceOver read the entire screen out again on every render — and the Trade tab
+         re-renders several times a second. Announcements go through announce() in ui/dom.ts,
+         which speaks one sentence about the thing that actually happened. -->
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

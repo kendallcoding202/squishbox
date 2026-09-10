@@ -1,4 +1,5 @@
-import { applyDelivery } from "../game/state";
+import { finishOf } from "../game/finishes";
+import { applyDelivery, type Inventory } from "../game/state";
 import type { Trade } from "../game/trade";
 import { store } from "../ui/store";
 import { api, ApiError, type Friend } from "./api";
@@ -8,6 +9,13 @@ import { api, ApiError, type Friend } from "./api";
  * the inventory snapshot (so it can enforce "spares only"), and it hands back completed trades as
  * deliveries that we apply here exactly once.
  */
+/** The part of an inventory that is safe to show a friend on any build. See the note in push(). */
+export function plainOnly(inv: Inventory): Inventory {
+  const out: Inventory = {};
+  for (const [key, n] of Object.entries(inv)) if (finishOf(key) === "plain" && n > 0) out[key] = n;
+  return out;
+}
+
 export interface NetState {
   online: boolean;
   error: string | null;
@@ -60,8 +68,14 @@ export async function syncNow(): Promise<void> {
     const t = await ensureRegistered();
     if (!t) return;
     try {
-      const invJson = JSON.stringify(store.state.inventory);
-      if (invJson !== lastInventoryJson) { await api.putInventory(t, store.state.inventory); lastInventoryJson = invJson; }
+      // Only plain dumplings are published to the trading post. A build without finishes
+      // renders a friend's spares straight from this inventory, and CHARACTER_BY_ID.get("c01x")
+      // is undefined there — it throws on .rarity and takes their Trade tab down live, then
+      // loadState deletes the item on their next start. Friend trading stays plain-only until
+      // finishes have been out long enough that nobody is still on a build that can't read them.
+      const shareable = plainOnly(store.state.inventory);
+      const invJson = JSON.stringify(shareable);
+      if (invJson !== lastInventoryJson) { await api.putInventory(t, shareable); lastInventoryJson = invJson; }
       const me = await api.me(t);
       net.skewMs = me.serverNow - Date.now();
       if (me.deliveries.length) {

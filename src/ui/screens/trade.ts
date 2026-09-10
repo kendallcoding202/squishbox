@@ -7,6 +7,7 @@ import { api, ApiError, type Friend } from "../../net/api";
 import { ensureRegistered, net, syncNow, token } from "../../net/sync";
 import { confetti, h, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
+import { characterIdOf, FINISH_INFO, finishOf } from "../../game/finishes";
 import { haptic, nope, success } from "../sound";
 import { store } from "../store";
 
@@ -123,13 +124,16 @@ function closeTrade(): void {
   rerender();
 }
 
-function miniItem(id: string, onRemove?: () => void): HTMLElement {
-  const c = CHARACTER_BY_ID.get(id) as Character | undefined;
+function miniItem(key: string, onRemove?: () => void): HTMLElement {
+  const c = CHARACTER_BY_ID.get(characterIdOf(key)) as Character | undefined;
   if (!c) return h("div", { class: "trade-item" }, "?");
+  const finish = finishOf(key);
+  const label = finish === "plain" ? c.name : `${FINISH_INFO[finish].label} ${c.name}`;
   return h("div", { class: "trade-item" },
-    dumplingEl(c, 48),
-    h("div", { class: "small", style: "font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, displayName(store.state, c.id)),
-    onRemove ? h("button", { class: "rm", "aria-label": `Remove ${c.name}`, onclick: onRemove }, "×") : null,
+    dumplingEl(c, 48, { finish, decorative: true }),
+    h("div", { class: "small", style: "font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, displayName(store.state, key)),
+    finish === "plain" ? null : h("div", { class: `finish-tag ${finish}` }, FINISH_INFO[finish].label),
+    onRemove ? h("button", { class: "rm", "aria-label": `Remove ${label}`, onclick: onRemove }, "×") : null,
   );
 }
 
@@ -154,17 +158,25 @@ function picker(side: SideKey): void {
   const inv = side === mySide ? store.state.inventory : partner.kind === "bot" ? store.botInventory(partner.bot.id) : {};
   const inTrade = new Map<string, number>();
   for (const id of t[side].items) inTrade.set(id, (inTrade.get(id) ?? 0) + 1);
-  const options = spares(inv).filter(([id, n]) => n - 1 - (inTrade.get(id) ?? 0) > 0);
+  const friendTrade = partner.kind === "friend";
+  const options = spares(inv)
+    // Finishes stay off the trading post until every build in the wild can read them: an
+    // older client throws on an item id it cannot look up. Neighbours are local, so they keep theirs.
+    .filter(([key]) => !friendTrade || finishOf(key) === "plain")
+    .filter(([key, n]) => n - 1 - (inTrade.get(key) ?? 0) > 0);
+  const hiddenFinishes = friendTrade && spares(inv).some(([key]) => finishOf(key) !== "plain");
   const who = side === mySide ? "your" : `${partnerName()}'s`;
   const ov = overlay(h("div", { class: "sheet" },
     h("h2", null, `Add one of ${who} spares`),
     options.length === 0 ? h("p", { class: "muted", style: "margin-top:10px" }, side === mySide ? "You need two of the same dumpling to trade one away." : `${partnerName()} has no spares left to give.`) : null,
-    h("div", { class: "picker" }, ...options.map(([id, n]) => {
-      const c = CHARACTER_BY_ID.get(id) as Character;
+    hiddenFinishes ? h("p", { class: "muted small", style: "margin-top:8px" }, "Shiny ones stay home for now — you can swap those with the neighbors.") : null,
+    h("div", { class: "picker" }, ...options.map(([key, n]) => {
+      const c = CHARACTER_BY_ID.get(characterIdOf(key)) as Character;
+      const finish = finishOf(key);
       return h("button", { class: "tile", style: `border-bottom:4px solid ${RARITY_INFO[c.rarity].color}`, onclick: () => {
         ov.remove();
-        void changeOffer(side, [...t[side].items, id]);
-      } }, h("span", { class: "count" }, `×${n}`), dumplingEl(c, 56), h("div", { class: "name" }, c.name));
+        void changeOffer(side, [...t[side].items, key]);
+      } }, h("span", { class: "count" }, `×${n}`), dumplingEl(c, 56, { finish, decorative: true }), h("div", { class: "name" }, finish === "plain" ? c.name : `${FINISH_INFO[finish].label} ${c.name}`));
     })),
     h("button", { class: "btn secondary block", style: "margin-top:14px", onclick: () => ov.remove() }, "Cancel"),
   ));
@@ -203,8 +215,8 @@ async function onConfirm(): Promise<void> {
         latchUnlocks(s); // a trade can be the dumpling that earns the next series
         s.bots[bot.id] = r.invB;
         s.stats.tradesCompleted += 1;
-        const gave = t.a.items.map((id) => CHARACTER_BY_ID.get(id)?.name).join(", ") || "nothing";
-        const got = t.b.items.map((id) => CHARACTER_BY_ID.get(id)?.name).join(", ") || "nothing";
+        const gave = t.a.items.map((key) => CHARACTER_BY_ID.get(characterIdOf(key))?.name).join(", ") || "nothing";
+        const got = t.b.items.map((key) => CHARACTER_BY_ID.get(characterIdOf(key))?.name).join(", ") || "nothing";
         log(s, "trade", `Traded ${gave} to ${bot.name} for ${got}`, Date.now());
       });
       proposals = null;
@@ -363,7 +375,7 @@ function friendsSection(): HTMLElement {
       const theirs = t[t.a.owner === me.playerId ? "b" : "a"].items;
       return h("div", { class: "card row" },
         h("span", { class: "face", style: "font-size:24px" }, "🎁"),
-        h("div", { class: "grow" }, h("b", null, f.name), h("div", { class: "small muted" }, `offers ${theirs.map((id) => CHARACTER_BY_ID.get(id)?.name ?? "?").join(", ")}`)),
+        h("div", { class: "grow" }, h("b", null, f.name), h("div", { class: "small muted" }, `offers ${theirs.map((key) => CHARACTER_BY_ID.get(characterIdOf(key))?.name ?? "?").join(", ")}`)),
         h("button", { class: "btn sm", onclick: () => { void openWithFriend(f, t); } }, "Look"),
       );
     })) : null,
@@ -397,12 +409,14 @@ export function renderTrade(): HTMLElement {
       ? h("div", { class: "card muted" }, mySpares === 0 ? "Open some boxes first. Neighbors want your spares!" : "No offers right now. Start a trade below.")
       : h("div", null, ...offers.map((t) => {
           const bot = BOT_BY_ID.get(t.b.owner) as Bot;
-          const want = CHARACTER_BY_ID.get(t.a.items[0] as string) as Character;
-          const give = CHARACTER_BY_ID.get(t.b.items[0] as string) as Character;
+          const wantKey = t.a.items[0] as string;
+          const giveKey = t.b.items[0] as string;
+          const want = CHARACTER_BY_ID.get(characterIdOf(wantKey)) as Character;
+          const give = CHARACTER_BY_ID.get(characterIdOf(giveKey)) as Character;
           return h("div", { class: "card row" },
             h("span", { class: "face", style: "font-size:28px" }, bot.emoji),
             h("div", { class: "grow" }, h("b", null, bot.name), h("div", { class: "small muted" }, `wants your ${want.name} for ${give.name}`)),
-            h("div", { class: "row", style: "gap:4px" }, dumplingEl(want, 40), h("span", { class: "muted" }, "⇄"), dumplingEl(give, 40)),
+            h("div", { class: "row", style: "gap:4px" }, dumplingEl(want, 40, { finish: finishOf(wantKey) }), h("span", { class: "muted" }, "⇄"), dumplingEl(give, 40, { finish: finishOf(giveKey) })),
             h("button", { class: "btn sm", onclick: () => openWithBot(bot, { ...structuredClone(t), lastChangedAt: Date.now() }) }, "Look"),
           );
         })),
@@ -410,7 +424,7 @@ export function renderTrade(): HTMLElement {
     h("div", { class: "neighbors" }, ...visibleBots().map((bot) => {
       const inv = store.botInventory(bot.id);
       const sp = spares(inv);
-      const preview = sp.slice(0, 4).map(([id]) => dumplingEl(CHARACTER_BY_ID.get(id) as Character, 36));
+      const preview = sp.slice(0, 4).map(([key]) => dumplingEl(CHARACTER_BY_ID.get(characterIdOf(key)) as Character, 36, { finish: finishOf(key) }));
       return h("div", { class: "card neighbor" },
         h("span", { class: "face" }, bot.emoji),
         h("div", { class: "grow" }, h("b", null, bot.name), h("div", { class: "small muted" }, `${sp.length} spares · ${Object.keys(inv).length} of ${CHARACTERS.length} collected`), h("div", { class: "row", style: "gap:2px;margin-top:4px" }, ...preview)),

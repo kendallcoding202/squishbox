@@ -1,6 +1,7 @@
 import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
 import { newBuddy, recordVisit, type BuddyState } from "./buddy";
+import { characterIdOf, FINISH_INFO, itemKey, parseItem, rollFinish, type Finish } from "./finishes";
 import { PITY_AT, rollBox } from "./odds";
 import type { Rng } from "./rng";
 
@@ -121,19 +122,36 @@ export function applyDelivery(state: SaveState, d: { id?: number; partnerName: s
     if (have <= 1) continue; // spares only: the last copy never leaves, even if the snapshot was stale
     state.inventory[id] = have - 1;
   }
-  for (const id of d.get) if (CHARACTER_BY_ID.has(id)) state.inventory[id] = (state.inventory[id] ?? 0) + 1;
+  // Accept any item key whose character this build knows, finish included, so a delivery
+  // from a newer build is not quietly thrown away between the trade and the basket.
+  for (const key of d.get) {
+    const parsed = parseItem(key);
+    if (parsed && CHARACTER_BY_ID.has(parsed.characterId)) state.inventory[key] = (state.inventory[key] ?? 0) + 1;
+  }
   latchUnlocks(state);
   state.stats.tradesCompleted += 1;
-  const gave = d.give.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
-  const got = d.get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
+  const gave = d.give.map((key) => CHARACTER_BY_ID.get(characterIdOf(key))?.name ?? key).join(", ") || "nothing";
+  const got = d.get.map((key) => CHARACTER_BY_ID.get(characterIdOf(key))?.name ?? key).join(", ") || "nothing";
   log(state, "trade", `Traded ${gave} to ${d.partnerName} for ${got}`, now);
   return true;
 }
 
 // ---- Series ----
 
+/**
+ * Which characters the collection contains, ignoring finish. A gold Taro is still a Taro:
+ * the album, the series unlock and every reward count the dumpling, not the wrapping. Get
+ * this wrong in the other direction and finishes quietly triple the cost of an album.
+ */
+export function ownedCharacterIds(inv: Inventory): Set<string> {
+  const out = new Set<string>();
+  for (const [key, n] of Object.entries(inv)) if (n > 0) out.add(characterIdOf(key));
+  return out;
+}
+
 export function ownedInSeries(inv: Inventory, id: SeriesId): number {
-  return charactersInSeries(id).filter((c) => (inv[c.id] ?? 0) > 0).length;
+  const owned = ownedCharacterIds(inv);
+  return charactersInSeries(id).filter((c) => owned.has(c.id)).length;
 }
 
 export function seriesUnlocked(state: SaveState, id: SeriesId): boolean {
@@ -306,7 +324,7 @@ export function boxesOpenedToday(state: SaveState, today: Date): number {
 }
 
 export type OpenResult =
-  | { ok: true; characterId: string; isNew: boolean; lucky: boolean }
+  | { ok: true; characterId: string; item: string; finish: Finish; isNew: boolean; lucky: boolean }
   | { ok: false; reason: "coins" | "cap" | "locked" };
 
 const RARE_PLUS: readonly Rarity[] = ["rare", "epic", "legendary"];
@@ -332,31 +350,40 @@ export function openBox(state: SaveState, box: Box, rng: Rng, wall: Date): OpenR
   state.stats.boxesOpened += 1;
   const key = dayKey(today);
   state.boxesToday = { day: key, count: boxesOpenedToday(state, today) + 1 };
-  const isNew = !state.inventory[c.id];
-  state.inventory[c.id] = (state.inventory[c.id] ?? 0) + 1;
+  // The finish is rolled separately from the rarity and does not depend on the box, so a
+  // common can come out gold. That is the point: every pull keeps a small second chance.
+  const finish = rollFinish(rng);
+  const item = itemKey(c.id, finish);
+  const isNew = !state.inventory[item];
+  state.inventory[item] = (state.inventory[item] ?? 0) + 1;
   latchUnlocks(state);
-  log(state, "open", `Opened ${box.name}: ${c.name} (${c.rarity})${isNew ? " NEW" : ""}${lucky ? " lucky" : ""}`, today.getTime());
-  return { ok: true, characterId: c.id, isNew, lucky };
+  const finishLabel = finish === "plain" ? "" : ` ${FINISH_INFO[finish].label.toLowerCase()}`;
+  log(state, "open", `Opened ${box.name}:${finishLabel} ${c.name} (${c.rarity})${isNew ? " NEW" : ""}${lucky ? " lucky" : ""}`, today.getTime());
+  return { ok: true, characterId: c.id, item, finish, isNew, lucky };
 }
 
 // ---- Steam Pot: sell spares for coins ----
 
-export function sellValue(characterId: string): number {
-  const c = CHARACTER_BY_ID.get(characterId);
-  return c ? SELL_VALUE[c.rarity] : 0;
+/** What the Steam Pot pays for one spare: the rarity price, times what the finish is worth. */
+export function sellValue(item: string): number {
+  const parsed = parseItem(item);
+  const c = parsed && CHARACTER_BY_ID.get(parsed.characterId);
+  return c ? Math.round(SELL_VALUE[c.rarity] * FINISH_INFO[parsed.finish].value) : 0;
 }
 
 /** Sell one spare. Always keeps the last copy, so a collection can never shrink. */
-export function sellSpare(state: SaveState, characterId: string, now: number): { ok: true; coins: number } | { ok: false } {
-  const have = state.inventory[characterId] ?? 0;
-  const c = CHARACTER_BY_ID.get(characterId);
-  if (have < 2 || !c) return { ok: false };
-  const coins = SELL_VALUE[c.rarity];
-  state.inventory[characterId] = have - 1;
+export function sellSpare(state: SaveState, item: string, now: number): { ok: true; coins: number } | { ok: false } {
+  const have = state.inventory[item] ?? 0;
+  const parsed = parseItem(item);
+  const c = parsed && CHARACTER_BY_ID.get(parsed.characterId);
+  if (have < 2 || !c || !parsed) return { ok: false };
+  const coins = sellValue(item);
+  state.inventory[item] = have - 1;
   state.coins += coins;
   state.stats.coinsEarned += coins;
   state.stats.coinsFromSales += coins;
-  log(state, "sell", `Sold a spare ${c.name} to the Steam Pot for ${coins} coins`, now);
+  const label = parsed.finish === "plain" ? c.name : `${FINISH_INFO[parsed.finish].label.toLowerCase()} ${c.name}`;
+  log(state, "sell", `Sold a spare ${label} to the Steam Pot for ${coins} coins`, now);
   return { ok: true, coins };
 }
 
@@ -426,12 +453,19 @@ export function setNickname(state: SaveState, characterId: string, raw: string):
   return clean;
 }
 
-export function displayName(state: SaveState, characterId: string): string {
-  return state.nicknames[characterId] ?? CHARACTER_BY_ID.get(characterId)?.name ?? "???";
+/** Nicknames belong to the dumpling, not the finish: name Taro once and the gold one answers to it too. */
+export function displayName(state: SaveState, item: string): string {
+  const id = characterIdOf(item);
+  return state.nicknames[id] ?? CHARACTER_BY_ID.get(id)?.name ?? "???";
 }
 
+/**
+ * How many different dumplings are in the basket. Counts characters, not item keys: the
+ * header reads "N of 50 collected" against the character list, and three finishes of Bao
+ * counting as three would have pushed that past 50 and made the album look broken.
+ */
 export function ownedCount(inv: Inventory): number {
-  return Object.values(inv).filter((n) => n > 0).length;
+  return ownedCharacterIds(inv).size;
 }
 
 export function totalItems(inv: Inventory): number {
@@ -440,9 +474,10 @@ export function totalItems(inv: Inventory): number {
 
 export function inventoryValue(inv: Inventory): number {
   let v = 0;
-  for (const [id, n] of Object.entries(inv)) {
-    const c = CHARACTER_BY_ID.get(id);
-    if (c) v += n * (({ common: 1, uncommon: 3, rare: 10, epic: 35, legendary: 150 })[c.rarity]);
+  for (const [key, n] of Object.entries(inv)) {
+    const parsed = parseItem(key);
+    const c = parsed && CHARACTER_BY_ID.get(parsed.characterId);
+    if (c && parsed) v += n * (({ common: 1, uncommon: 3, rare: 10, epic: 35, legendary: 150 })[c.rarity]) * FINISH_INFO[parsed.finish].value;
   }
   return v;
 }
@@ -480,11 +515,18 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
         // A character id we don't know about (a hand-edited save, or one written by a build
         // that had a dumpling this one doesn't) reaches the Trade screen as undefined and
         // throws on .rarity, taking the whole tab down. Drop what we can't draw.
-        for (const id of Object.keys(merged.inventory)) {
-          const n = merged.inventory[id];
-          if (!CHARACTER_BY_ID.has(id) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[id];
+        // Item keys carry the finish (c01 plain, c01x gold), so "do we know this?" is a
+        // question about the character inside the key, not the key itself. Checking the raw
+        // key against CHARACTER_BY_ID would delete every finish a kid owns on the next load.
+        const known = (key: string): boolean => {
+          const parsed = parseItem(key);
+          return !!parsed && CHARACTER_BY_ID.has(parsed.characterId);
+        };
+        for (const key of Object.keys(merged.inventory)) {
+          const n = merged.inventory[key];
+          if (!known(key) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[key];
         }
-        merged.shelf = merged.shelf.filter((id) => CHARACTER_BY_ID.has(id));
+        merged.shelf = merged.shelf.filter(known);
         if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
         if (!Array.isArray(merged.appliedDeliveries)) merged.appliedDeliveries = [];
         latchUnlocks(merged); // saves from before the latch: bank what the collection already earns

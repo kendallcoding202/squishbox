@@ -1,6 +1,7 @@
 import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type Rarity, type SeriesId } from "../../data/characters";
 import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems, chooseBuddy, setBuddyAside} from "../../game/state";
 import { nextMilestone, reached } from "../../game/buddy";
+import { FINISH_INFO, FINISHES, itemKey, SPECIAL_FINISHES, type Finish } from "../../game/finishes";
 import { confetti, h, onTap, overlay, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic } from "../sound";
@@ -9,12 +10,38 @@ import { store } from "../store";
 let filter: Rarity | "all" = "all";
 let series: SeriesId = "s1";
 
+/** Every finish of one character that the basket actually contains, best first. */
+function ownedFinishes(inv: Record<string, number>, characterId: string): { finish: Finish; n: number }[] {
+  return [...SPECIAL_FINISHES, "plain" as Finish]
+    .map((finish) => ({ finish, n: inv[itemKey(characterId, finish)] ?? 0 }))
+    .filter((x) => x.n > 0);
+}
+
+/** What to show on the shelf and in the grid: the fanciest one you own. */
+function bestFinish(inv: Record<string, number>, characterId: string): Finish {
+  return ownedFinishes(inv, characterId)[0]?.finish ?? "plain";
+}
+
+function totalOf(inv: Record<string, number>, characterId: string): number {
+  return FINISHES.reduce((a, f) => a + (inv[itemKey(characterId, f)] ?? 0), 0);
+}
+
+function finishTag(finish: Finish): HTMLElement | null {
+  return finish === "plain" ? null : h("span", { class: `finish-tag ${finish}` }, FINISH_INFO[finish].label);
+}
+
 /** The big single-dumpling sheet: name it, shelve it, sell a spare. Also opened from the home screen. */
-export function detail(c: Character): void {
+export function detail(c: Character, startFinish?: Finish): void {
   const info = RARITY_INFO[c.rarity];
+  // Which finish of this dumpling the sheet is showing. Naming is shared across all of them;
+  // shelving and selling are per finish, because a gold spare is not a plain spare.
+  let finish: Finish = startFinish ?? bestFinish(store.state.inventory, c.id);
   const render = (): HTMLElement => {
     const s = store.state;
-    const count = s.inventory[c.id] ?? 0;
+    const owned = ownedFinishes(s.inventory, c.id);
+    if (!owned.some((o) => o.finish === finish)) finish = owned[0]?.finish ?? "plain";
+    const item = itemKey(c.id, finish);
+    const count = s.inventory[item] ?? 0;
     const nick = s.nicknames[c.id];
     const nameInput = h("input", { type: "text", maxlength: String(NICKNAME_MAX), placeholder: c.name, value: nick ?? "", "aria-label": "Nickname", autocomplete: "off", autocapitalize: "words" }) as HTMLInputElement;
     const saveNick = () => {
@@ -27,25 +54,25 @@ export function detail(c: Character): void {
     nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveNick(); } });
 
     let armed = false;
-    const sellBtn = h("button", { class: "btn sm secondary", disabled: count < 2 }, `Sell a spare · +${sellValue(c.id)}`);
+    const sellBtn = h("button", { class: "btn sm secondary", disabled: count < 2 }, `Sell a spare · +${sellValue(item)}`);
     sellBtn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
         sellBtn.textContent = "Tap again to sell";
         sellBtn.classList.add("bad");
-        setTimeout(() => { armed = false; sellBtn.textContent = `Sell a spare · +${sellValue(c.id)}`; sellBtn.classList.remove("bad"); }, 2500);
+        setTimeout(() => { armed = false; sellBtn.textContent = `Sell a spare · +${sellValue(item)}`; sellBtn.classList.remove("bad"); }, 2500);
         return;
       }
       const box: { r: ReturnType<typeof sellSpare> } = { r: { ok: false } };
-      store.update((st) => { box.r = sellSpare(st, c.id, Date.now()); });
+      store.update((st) => { box.r = sellSpare(st, item, Date.now()); });
       if (box.r.ok) { coin(); haptic("success"); toast(`+${box.r.coins} coins from the Steam Pot`); confetti(["#ffd23f", "#fff"], 25); }
       swap();
     });
 
-    const shelved = onShelf(s, c.id);
+    const shelved = onShelf(s, item);
     const shelfBtn = h("button", { class: "btn sm" + (shelved ? " secondary" : ""), onclick: () => {
       let r: ReturnType<typeof toggleShelf> = "full";
-      store.update((st) => { r = toggleShelf(st, c.id); });
+      store.update((st) => { r = toggleShelf(st, item); });
       if (r === "full") toast(`Shelf is full (${SHELF_MAX}). Take one off first.`);
       else { haptic("light"); toast(r === "added" ? "On the shelf!" : "Off the shelf"); }
       swap();
@@ -72,16 +99,19 @@ export function detail(c: Character): void {
     } }, isBuddy ? "Not my buddy any more" : "\u{1F49B} Make my buddy") : null;
 
     return h("div", { class: "sheet" },
-      h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true, fullSquish: true })),
+      h("div", { class: "reveal-stage" }, h("div", { class: "glow on", style: `background:${info.glow}` }), dumplingEl(c, 200, { idle: true, fullSquish: true, finish })),
       h("h2", { style: "margin-top:4px" }, nick ?? c.name),
-      h("p", null, nick ? h("span", { class: "muted small" }, `(${c.name}) `) : null, h("span", { class: "badge", style: `background:${info.color}` }, info.label), " ", h("span", { class: "pill" }, `×${count}`)),
+      h("p", null, nick ? h("span", { class: "muted small" }, `(${c.name}) `) : null, h("span", { class: "badge", style: `background:${info.color}` }, info.label), " ", finishTag(finish), " ", h("span", { class: "pill" }, `×${count}`)),
+      owned.length > 1 ? h("div", { class: "chips", style: "justify-content:center;margin-top:8px" }, ...owned.map(({ finish: f, n }) =>
+        h("button", { class: "chip" + (f === finish ? " on" : ""), "aria-pressed": f === finish ? "true" : "false", onclick: () => { finish = f; swap(); } },
+          `${FINISH_INFO[f].label} ×${n}`))) : null,
       h("p", { class: "muted", style: "margin-top:10px" }, c.flavor),
       h("p", { class: "muted small", style: "margin-top:6px" }, "Press and drag to squish!"),
       h("div", { class: "row", style: "margin-top:14px;gap:8px" }, nameInput, h("button", { class: "btn sm", onclick: saveNick }, "Name")),
       h("div", { class: "row", style: "margin-top:10px;gap:8px;justify-content:center;flex-wrap:wrap" }, shelfBtn, buddyBtn),
       milestones,
       h("div", { class: "row between", style: "margin-top:12px" },
-        h("div", { class: "small muted grow", style: "text-align:left" }, count >= 2 ? `You have ${count - 1} spare${count > 2 ? "s" : ""}. The Steam Pot pays ${sellValue(c.id)} coins each.` : "Get a second one to trade or sell it."),
+        h("div", { class: "small muted grow", style: "text-align:left" }, count >= 2 ? `You have ${count - 1} spare${count > 2 ? "s" : ""}. The Steam Pot pays ${sellValue(item)} coins each.` : `Get a second ${finish === "plain" ? "one" : FINISH_INFO[finish].label.toLowerCase() + " one"} to trade or sell it.`),
         sellBtn,
       ),
       h("button", { class: "btn secondary block", style: "margin-top:14px", onclick: () => ov.remove() }, "Close"),
@@ -105,21 +135,26 @@ export function renderCollection(): HTMLElement {
     }, RARITY_INFO[r].label))];
 
   const tiles = list.map((c) => {
-    const n = unlocked ? (s.inventory[c.id] ?? 0) : 0;
+    // One tile per dumpling however many finishes of it you have: the album is about
+    // characters. The tile wears the best finish so a gold one is visible from the grid.
+    const n = unlocked ? totalOf(s.inventory, c.id) : 0;
     const info = RARITY_INFO[c.rarity];
-    const art = dumplingEl(c, 80);
+    const best = n ? bestFinish(s.inventory, c.id) : "plain";
+    const art = dumplingEl(c, 80, { finish: best, decorative: true });
+    const shelved = FINISHES.some((f) => onShelf(s, itemKey(c.id, f)));
+    const finishNote = best === "plain" ? "" : `, ${FINISH_INFO[best].label.toLowerCase()}`;
     const tile = h("div", {
       class: "tile" + (n ? "" : " locked"),
       style: `border-bottom:4px solid ${info.color}`,
       role: "button", tabindex: n ? "0" : "-1",
-      "aria-label": n ? `${displayName(s, c.id)}, ${info.label}, owned ${n}` : `Unknown ${info.label} dumpling`,
+      "aria-label": n ? `${displayName(s, c.id)}, ${info.label}${finishNote}, owned ${n}` : `Unknown ${info.label} dumpling`,
     },
       n > 1 ? h("span", { class: "count" }, `×${n}`) : null,
-      onShelf(s, c.id) ? h("span", { class: "star" }, "⭐") : null,
+      shelved ? h("span", { class: "star" }, "⭐") : null,
       art,
       h("div", { class: "name" }, n ? displayName(s, c.id) : "???"),
     );
-    if (n) onTap(tile, () => detail(c));
+    if (n) onTap(tile, () => detail(c, best));
     return tile;
   });
 

@@ -45,6 +45,23 @@ export function onTap(el: HTMLElement, fn: () => void): void {
   el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } });
 }
 
+/**
+ * One polite live region for things that happen without the reader's finger on them: what
+ * came out of a box, what a neighbour said, what a reward paid. VoiceOver only speaks what
+ * it is told about, and the reveal is the moment the whole game turns on — a child using a
+ * screen reader taps three times and, without this, hears nothing at all.
+ */
+let liveRegion: HTMLElement | null = null;
+export function announce(text: string): void {
+  if (!liveRegion) {
+    liveRegion = h("div", { class: "sr-only", role: "status", "aria-live": "polite", "aria-atomic": "true" });
+    document.body.appendChild(liveRegion);
+  }
+  // Same text twice in a row is otherwise dropped by the reader as a repeat.
+  liveRegion.textContent = "";
+  window.setTimeout(() => { if (liveRegion) liveRegion.textContent = text; }, 40);
+}
+
 let toastTimer = 0;
 export function toast(text: string): void {
   document.querySelector(".toast")?.remove();
@@ -55,16 +72,36 @@ export function toast(text: string): void {
 }
 
 export function overlay(content: HTMLElement, onClose?: () => void): HTMLElement {
-  const ov = h("div", { class: "overlay" }, content);
-  ov.addEventListener("click", (e) => {
-    if (e.target === ov) { ov.remove(); onClose?.(); }
-  });
+  const ov = h("div", { class: "overlay", role: "dialog", "aria-modal": "true" }, content);
+  const returnTo = document.activeElement as HTMLElement | null;
+  const close = () => { ov.remove(); document.removeEventListener("keydown", onKey); returnTo?.focus?.(); onClose?.(); };
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+  // Escape closes, and Tab stays inside: a reader that wanders out of a modal onto the screen
+  // behind it leaves a child stuck with no way back to the Close button.
+  const onKey = (e: KeyboardEvent): void => {
+    if (!ov.isConnected) { document.removeEventListener("keydown", onKey); return; }
+    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if (e.key !== "Tab") return;
+    const focusable = [...ov.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.hasAttribute("disabled"));
+    if (focusable.length === 0) return;
+    const first = focusable[0] as HTMLElement;
+    const last = focusable[focusable.length - 1] as HTMLElement;
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener("keydown", onKey);
   document.body.appendChild(ov);
+  // Move the reader into the sheet, preferring its heading so the whole thing gets read out.
+  const target = ov.querySelector<HTMLElement>("h2, h1") ?? ov.querySelector<HTMLElement>("button");
+  if (target) {
+    if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+    target.focus();
+  }
   return ov;
 }
 
 export function confetti(colors: string[], n = 60): void {
-  const wrap = h("div", { class: "confetti" });
+  const wrap = h("div", { class: "confetti", "aria-hidden": "true" });
   for (let i = 0; i < n; i++) {
     const p = h("i", {
       style: `left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-duration:${1.6 + Math.random() * 1.4}s;animation-delay:${Math.random() * 0.4}s;transform:rotate(${Math.random() * 360}deg)`,
@@ -77,7 +114,7 @@ export function confetti(colors: string[], n = 60): void {
 
 /** Little hearts drifting up from a point. For tapping the buddy — pure delight, no state. */
 export function hearts(x: number, y: number, n = 7): void {
-  const wrap = h("div", { class: "hearts" });
+  const wrap = h("div", { class: "hearts", "aria-hidden": "true" });
   for (let i = 0; i < n; i++) {
     wrap.appendChild(h("i", {
       style: `left:${x}px;top:${y}px;--dx:${(Math.random() * 2 - 1) * 80}px;--r:${Math.random() * 50 - 25}deg;` +
