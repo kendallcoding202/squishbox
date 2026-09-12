@@ -86,7 +86,7 @@ export function renderBuddy(): HTMLElement {
   });
 
   const decor = decorations(b);
-  const shelf = h("div", { class: "shelf" },
+  const shelf = h("div", { class: "room-shelf" },
     ...decor.map((m) => h("span", { class: "decor", title: m.label }, m.decor ?? "")),
   );
 
