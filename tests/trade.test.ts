@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BOTS, botAccepts, botProposal, seedBotInventory } from "../src/game/bots";
 import { mulberry32 } from "../src/game/rng";
-import { assess, canConfirm, confirm, COOLDOWN_MS, createTrade, decline, execute, owns, ownsSpares, setOffer } from "../src/game/trade";
+import { assess, canConfirm, confirm, COOLDOWN_MS, createTrade, decline, execute, itemsValue, owns, ownsSpares, setOffer } from "../src/game/trade";
 
 const T0 = 1_000_000;
 
@@ -105,6 +105,62 @@ describe("neighbor bots", () => {
     expect(p!.a.items).toEqual(["c05"]);
     expect(p!.b.items).toEqual(["c01"]);
     expect(botProposal(bot, botInv, { c05: 1 }, T0, mulberry32(1))).toBeNull();
+  });
+
+  /**
+   * botProposal used to read an item key as a character id, so the first spare with a finish
+   * on it threw on .rarity and took the whole Trade tab down on render. Two of the same
+   * glittery dumpling is all it took.
+   */
+  it("handles spares that carry a finish instead of crashing", () => {
+    const bot = BOTS[0]!;
+    const botInv = { r01: 3, e01: 2, c01: 2 };
+    const playerInv = { u02g: 3, c04g: 2, l01x: 2 };
+    expect(() => botProposal(bot, botInv, playerInv, T0, mulberry32(4))).not.toThrow();
+    const p = botProposal(bot, botInv, playerInv, T0, mulberry32(4));
+    if (p) {
+      expect(Object.keys(playerInv)).toContain(p.a.items[0]);
+      expect(Object.keys(botInv)).toContain(p.b.items[0]);
+    }
+  });
+
+  it("values a finish by its multiplier when matching a swap", () => {
+    const bot = BOTS[0]!;
+    // A gold common is worth as much as a plain rare: 1 x 10 against 10 x 1. The bot has to
+    // match the band around 10, so it offers the rare. Reading c01x as the bare character
+    // would put the band around 1 and offer the common instead.
+    expect(itemsValue(["c01x"])).toBe(10);
+    expect(itemsValue(["c01x"])).toBe(itemsValue(["r01"]));
+    const p = botProposal(bot, { r01: 2, c01: 2 }, { c01x: 2 }, T0, mulberry32(2));
+    expect(p).not.toBeNull();
+    expect(p!.a.items).toEqual(["c01x"]);
+    expect(p!.b.items).toEqual(["r01"]);
+  });
+
+  it("never proposes an item this build cannot price", () => {
+    const bot = BOTS[0]!;
+    expect(botProposal(bot, { c01: 2 }, { notacharacter: 2 }, T0, mulberry32(3))).toBeNull();
+  });
+
+  it("a finished spare can actually change hands", () => {
+    const bot = BOTS[0]!;
+    let t = createTrade("fin", "you", bot.id, T0);
+    t = setOffer(t, "a", ["c01r"], T0); // rainbow common, worth 4
+    t = setOffer(t, "b", ["u01"], T0); // plain uncommon, worth 3
+    expect(botAccepts(bot, t, "b", { u01: 2 })).toBe(true);
+    t = confirm(t, "a", T0 + COOLDOWN_MS);
+    t = confirm(t, "b", T0 + COOLDOWN_MS);
+    const r = execute(t, { c01r: 2 }, { u01: 2 });
+    expect(r.invA).toEqual({ c01r: 1, u01: 1 });
+    expect(r.invB).toEqual({ u01: 1, c01r: 1 });
+  });
+
+  it("still refuses a finished spare that is not worth enough", () => {
+    const bot = BOTS[0]!;
+    let t = createTrade("fin2", "you", bot.id, T0);
+    t = setOffer(t, "a", ["c01g"], T0); // glittery common, worth 2
+    t = setOffer(t, "b", ["u01"], T0); // plain uncommon, worth 3
+    expect(botAccepts(bot, t, "b", { u01: 2 })).toBe(false); // 2/3 is under mika's 0.8
   });
 });
 

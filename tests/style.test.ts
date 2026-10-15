@@ -19,11 +19,13 @@ const LAYOUT_PROPS = new Set([
   "position", "top", "right", "bottom", "left", "inset", "display", "background", "background-image", "transform",
 ]);
 
-interface Rule { selector: string; props: Set<string>; line: number }
+interface Rule { selector: string; props: Set<string>; body: string; line: number }
 
 /** Top-level rules only: anything nested in @media/@supports is skipped. */
 function topLevelRules(css: string): Rule[] {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // Blank comments out rather than deleting them, so every offset and line number below
+  // still points at the same place in the real file.
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
   const rules: Rule[] = [];
   let head = "";
   let depth = 0;
@@ -47,7 +49,7 @@ function topLevelRules(css: string): Rule[] {
         const props = new Set(
           body.split(";").filter((p) => p.includes(":")).map((p) => (p.split(":")[0] ?? "").trim().toLowerCase()),
         );
-        rules.push({ selector, props, line: lineAt(i) });
+        rules.push({ selector, props, body, line: lineAt(i) });
       }
       i = j;
       continue;
@@ -92,6 +94,25 @@ describe("stylesheet", () => {
       }
     }
     expect(clashes, `two components are probably sharing a class name:\n${clashes.join("\n")}`).toEqual([]);
+  });
+
+  /**
+   * .tile .name is nowrap with an ellipsis, and an ellipsis needs a track that may be
+   * narrower than the text. A bare 1fr is minmax(auto, 1fr), and auto will not shrink past
+   * min-content, so a long name widened the grid and clipped its last column off screen —
+   * which is how a finish shipped: "Rainbow Blueberry" is a lot longer than "Blueberry".
+   */
+  it("grids holding ellipsized tiles let their tracks shrink", () => {
+    const tracks = rules.filter(
+      (r) => /(^|\s)\.(grid|picker)$/.test(r.selector.trim()) && r.props.has("grid-template-columns"),
+    );
+    expect(tracks.length).toBeGreaterThan(0);
+    // repeat(N, 1fr) is the shape that cannot shrink. repeat(N, minmax(0, 1fr)) can.
+    const bad = tracks.filter((r) => /repeat\(\s*\d+\s*,\s*1fr\s*\)/.test(r.body));
+    expect(
+      bad.map((r) => `${r.selector} at line ${r.line}`),
+      "use minmax(0, 1fr) so a long tile name can ellipsize instead of widening the grid",
+    ).toEqual([]);
   });
 
   it("the buddy room's shelf and the home screen's shelf are different classes", () => {

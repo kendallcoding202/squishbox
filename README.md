@@ -82,4 +82,24 @@ tests/                   vitest
 
 ## Store screenshots
 
-`store/screenshots/` holds App Store screenshots at Apple's required sizes, generated from the web build with a seeded save. They were produced with a Playwright script that loads a populated save into the preview server and captures each tab at iPhone 6.9" (440x956 @3x) and iPad 13" (1032x1376 @2x) viewports. Regenerate them after any visual change.
+`store/screenshots/` holds the App Store screenshots, generated from the real web build by
+`scripts/screenshots.mjs`. Regenerate them after any visual change:
+
+```sh
+npm run screenshots
+```
+
+Playwright is not an app dependency and CI does not need it, so install it once with
+`npm i -D playwright && npx playwright install chromium`, or point `PLAYWRIGHT_MODULE` at an
+existing install.
+
+The script seeds a save, drives the real app, and captures each frame at exactly the pixel
+size Apple asks for: iPhone 6.9" at 1320x2868 (440x956 at 3x) and iPad 13" at 2064x2752
+(1032x1376 at 2x). Each capture is then placed under a short caption and re-captured at the
+same size, so the app pixels are the app's own and nothing is scaled up. The hero frame feeds
+the game's randomness a fixed sequence so it always opens a gold epic rather than whatever
+the odds gave that run.
+
+The first one or two frames are what a stranger sees in search results, which is the step
+that currently loses people: of 3.7k impressions, about 1.5% opened the product page, while
+24% of those who did install. Lead with the best-looking frame.

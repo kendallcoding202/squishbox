@@ -83,8 +83,13 @@ p.muted, .muted { color: var(--muted); }
 .dumpling svg { display: block; width: 100%; height: 100%; pointer-events: none; }
 
 /* collection grid */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .tile { background: var(--card); border-radius: 18px; padding: 10px 8px 8px; text-align: center; box-shadow: var(--shadow); position: relative; border: 2px solid transparent; }
+/* Ellipsis only engages if the column is allowed to be narrower than this text. A plain
+   1fr track is minmax(auto, 1fr) and auto will not go below min-content, which for nowrap
+   text is the whole string — so a long name like "Rainbow Blueberry" pushed the grid wider
+   than its container and cut the last column off. Every track holding one of these is
+   minmax(0, 1fr). */
 .tile .name { font-weight: 800; font-size: 13px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile .count { position: absolute; top: 6px; right: 6px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 7px; }
 .tile.locked { opacity: 0.55; }
@@ -140,7 +145,7 @@ p.muted, .muted { color: var(--muted); }
 .fair.fair { background: #eef3ff; color: #2b5cb8; }
 .fair.poor { background: #fff3e0; color: #a3600a; }
 .fair.bad { background: #ffe5e5; color: #b02a2a; }
-.picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; max-height: 40vh; overflow: auto; }
+.picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; max-height: 40vh; overflow: auto; }
 .neighbor { display: flex; align-items: center; gap: 12px; }
 .neighbor .face { font-size: 34px; width: 52px; height: 52px; border-radius: 50%; background: #fbf6ee; display: grid; place-items: center; }
 .log { list-style: none; font-size: 13px; }
@@ -179,7 +184,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   .tile > .dumpling { width: 116px !important; height: 116px !important; }
   .tile .name { font-size: 15px; }
   .neighbors { grid-template-columns: repeat(2, 1fr); gap: 14px; }
-  .picker { grid-template-columns: repeat(6, 1fr); }
+  .picker { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .sheet { max-width: 520px; }
   .reveal-stage { height: 300px; }
   .trade-item { width: 72px; }

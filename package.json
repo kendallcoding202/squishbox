@@ -15,7 +15,8 @@
     "ios:open": "npx cap open ios",
     "build:server": "vite build --config vite.server.config.ts",
     "start:server": "node server/dist/index.js",
-    "dev:server": "DB_PATH=./server/dev.db node server/dist/index.js"
+    "dev:server": "DB_PATH=./server/dev.db node server/dist/index.js",
+    "screenshots": "npm run build && node scripts/screenshots.mjs"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

@@ -1,9 +1,8 @@
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO } from "../data/characters";
 import { BOX_BY_ID, type Box } from "../data/boxes";
 import { itemKey, rollFinish } from "./finishes";
 import { rollBox } from "./odds";
 import type { Inventory } from "./state";
-import { assess, createTrade, setOffer, type Trade } from "./trade";
+import { assess, createTrade, itemsValue, setOffer, type Trade } from "./trade";
 import { mulberry32, type Rng } from "./rng";
 
 /** Neighbors stand in for real friends in the prototype. Same trade engine, same rules. */
@@ -59,22 +58,28 @@ export function botAccepts(bot: Bot, trade: Trade, botSide: "a" | "b", botInv: I
 /**
  * A bot proposes a swap: one of its spare dupes for one of the player's spare dupes of similar value.
  * Returns null when there is nothing sensible to offer.
+ *
+ * Everything here is keyed by ITEM KEY, not character id: a glittery Sprout is "u02g", and
+ * CHARACTER_BY_ID knows nothing about it. Pricing goes through itemsValue, the same function
+ * the trade screen and botAccepts use, so a finish is worth the same to a neighbour as it is
+ * to the fairness meter — and an item this build cannot price is left out rather than
+ * throwing. Reading a finished key as a character id is what used to take the whole Trade
+ * tab down the first time a kid had two of the same glittery dumpling.
  */
 export function botProposal(bot: Bot, botInv: Inventory, playerInv: Inventory, now: number, rng: Rng): Trade | null {
-  const spare = (inv: Inventory) => Object.entries(inv).filter(([, n]) => n >= 2).map(([id]) => id);
-  const botSpare = spare(botInv);
-  const playerSpare = spare(playerInv).filter((id) => !botInv[id]); // bot wants what it lacks
+  const spare = (inv: Inventory) => Object.entries(inv).filter(([, n]) => n >= 2).map(([key]) => key);
+  const botSpare = spare(botInv).filter((key) => !playerInv[key] && itemsValue([key]) > 0);
+  const playerSpare = spare(playerInv).filter((key) => !botInv[key] && itemsValue([key]) > 0); // wants what it lacks
   if (botSpare.length === 0 || playerSpare.length === 0) return null;
   const want = playerSpare[Math.floor(rng() * playerSpare.length)] as string;
-  const wantValue = RARITY_INFO[(CHARACTER_BY_ID.get(want) as (typeof CHARACTERS)[number]).rarity].value;
+  const wantValue = itemsValue([want]);
   const candidates = botSpare
-    .filter((id) => !playerInv[id])
-    .map((id) => ({ id, v: RARITY_INFO[(CHARACTER_BY_ID.get(id) as (typeof CHARACTERS)[number]).rarity].value }))
+    .map((key) => ({ key, v: itemsValue([key]) }))
     .filter((c) => c.v >= wantValue * 0.6 && c.v <= wantValue * 1.6);
   if (candidates.length === 0) return null;
-  const give = candidates[Math.floor(rng() * candidates.length)] as { id: string };
+  const give = candidates[Math.floor(rng() * candidates.length)] as { key: string };
   let t = createTrade(`bot-${bot.id}-${now}`, "you", bot.id, now);
-  t = setOffer(t, "b", [give.id], now);
+  t = setOffer(t, "b", [give.key], now);
   t = setOffer(t, "a", [want], now);
   return t;
 }
