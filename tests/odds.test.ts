@@ -54,12 +54,13 @@ describe("published odds match what a player actually pulls", () => {
       const s = newState();
       s.parent.dailyBoxCap = Number.MAX_SAFE_INTEGER;
       s.coins = Number.MAX_SAFE_INTEGER;
-      // Every series unlocked so no roll is refused.
+      // Every series unlocked so no roll is refused. A seasonal series does not unlock by
+      // ownership, so the simulated date has to sit inside its window too.
       for (const c of CHARACTERS) s.inventory[c.id] = 1;
       const seen: Record<string, number> = {};
       let pulls = 0;
       for (let i = 0; i < N; i++) {
-        const r = openBox(s, box, rng, new Date("2026-09-06T10:00:00"));
+        const r = openBox(s, box, rng, new Date("2026-10-25T10:00:00"));
         if (!r.ok) continue;
         const c = CHARACTERS.find((x) => x.id === r.characterId);
         if (c) { seen[c.rarity] = (seen[c.rarity] ?? 0) + 1; pulls++; }

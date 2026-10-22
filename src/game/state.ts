@@ -1,4 +1,4 @@
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Rarity, type SeriesId } from "../data/characters";
+import { CHARACTERS, CHARACTER_BY_ID, CORE_CHARACTERS, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonOpen, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
 import { newBuddy, recordVisit, type BuddyState } from "./buddy";
 import { characterIdOf, FINISH_INFO, itemKey, parseItem, rollFinish, type Finish } from "./finishes";
@@ -154,9 +154,24 @@ export function ownedInSeries(inv: Inventory, id: SeriesId): number {
   return charactersInSeries(id).filter((c) => owned.has(c.id)).length;
 }
 
-export function seriesUnlocked(state: SaveState, id: SeriesId): boolean {
+/**
+ * Is a series open right now? Two different gates behind one question.
+ *
+ * A progression series is earned and then latched (see latchUnlocks). A seasonal series is
+ * on the calendar instead: it opens and shuts on the date and comes back every year, so it
+ * is read live and never written into the save. Latching one would leave the Haunted
+ * Steamer open all year after a kid's first Halloween, which is the opposite of the point.
+ *
+ * Note the plain wall clock rather than effectiveNow. The forward-only clock exists to stop
+ * the daily coins being farmed by winding the device forward; running the season through it
+ * would mean one clock jump could hide Halloween for good. Nothing seasonal pays out coins,
+ * so there is nothing here to farm.
+ */
+export function seriesUnlocked(state: SaveState, id: SeriesId, now: Date = new Date()): boolean {
   const s = SERIES_BY_ID.get(id);
-  if (!s || !s.unlockFrom) return true;
+  if (!s) return true;
+  if (s.season) return seasonOpen(s.season, now);
+  if (!s.unlockFrom) return true;
   if (state.unlockedSeries.includes(id)) return true; // earned once, kept for good
   return ownedInSeries(state.inventory, s.unlockFrom) >= s.unlockAt;
 }
@@ -170,6 +185,7 @@ export function seriesUnlocked(state: SaveState, id: SeriesId): boolean {
  */
 export function latchUnlocks(state: SaveState): void {
   for (const s of SERIES) {
+    if (s.season) continue; // a season is the calendar's to open and shut, not ours to keep
     if (!s.unlockFrom) continue;
     if (state.unlockedSeries.includes(s.id)) continue;
     if (ownedInSeries(state.inventory, s.unlockFrom) >= s.unlockAt) state.unlockedSeries.push(s.id);
@@ -337,7 +353,7 @@ export function luckyNext(state: SaveState): boolean {
 /** Spend coins, roll the box, add to inventory. The lucky meter guarantees Rare+ every PITY_AT boxes. */
 export function openBox(state: SaveState, box: Box, rng: Rng, wall: Date): OpenResult {
   const today = effectiveNow(state, wall); // the cap is a parent's setting; don't let the clock undo it
-  if (!seriesUnlocked(state, box.series)) return { ok: false, reason: "locked" };
+  if (!seriesUnlocked(state, box.series, wall)) return { ok: false, reason: "locked" };
   if (state.coins < box.price) return { ok: false, reason: "coins" };
   if (boxesOpenedToday(state, today) >= state.parent.dailyBoxCap) return { ok: false, reason: "cap" };
   markClockSeen(state, today);
@@ -421,6 +437,11 @@ export const REWARDS: readonly Reward[] = [
   { id: "first5", series: "s1", label: "Collect 5 different dumplings", coins: 15, progress: (inv) => [Math.min(5, ownedInSeries(inv, "s1")), 5] },
   ...seriesRewards("s1", "", "The Golden Dumpling", 1),
   ...seriesRewards("s2", "s2-", "The Jade Dragon", 1.2),
+  // One goal for the seasonal set rather than the usual six: with one or two dumplings in
+  // each rarity band, "All Epics" would be the same single tick under a grander name. A
+  // claim is permanent, which is right for a set you finish once and then own every
+  // Halloween after — it can take more than one October to get there, and it waits.
+  { id: "s3-album", series: "s3", label: "Catch every spooky one", coins: 250, progress: (inv) => [ownedInSeries(inv, "s3"), charactersInSeries("s3").length] },
 ];
 
 export function rewardsForSeries(id: SeriesId): Reward[] {
@@ -466,6 +487,15 @@ export function displayName(state: SaveState, item: string): string {
  */
 export function ownedCount(inv: Inventory): number {
   return ownedCharacterIds(inv).size;
+}
+
+/**
+ * The same count, but only over the sets that are always there. The home header runs on
+ * this: a seasonal dumpling must not push the total past the 50 the album is sized for.
+ */
+export function ownedCoreCount(inv: Inventory): number {
+  const owned = ownedCharacterIds(inv);
+  return CORE_CHARACTERS.filter((c) => owned.has(c.id)).length;
 }
 
 export function totalItems(inv: Inventory): number {

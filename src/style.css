@@ -230,6 +230,12 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 /* ---- v3: series teaser, shelf ---- */
 .teaser .silhouette .dumpling { filter: grayscale(1) contrast(0.5) brightness(1.2); opacity: 0.7; }
+/* Seasonal banner. Decoration only: no layout here, so it cannot fight .card for the box. */
+.season { background: linear-gradient(160deg, #3b2a52, #5d3a6e 60%, #7a4a53); color: #fff6ea; }
+.season h3, .season .muted { color: #fff6ea; }
+.season .muted { opacity: 0.82; }
+.season .pill { background: rgba(255, 246, 234, 0.16); color: #fff6ea; }
+.season .btn { background: #ff9a3c; color: #2b2118; }
 .shelf { position: relative; padding: 8px 8px 0; }
 .shelf.empty { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
 .shelf-row { display: flex; justify-content: space-around; align-items: flex-end; gap: 4px; padding: 0 6px; position: relative; z-index: 1; }

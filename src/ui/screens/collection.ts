@@ -1,4 +1,4 @@
-import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type Rarity, type SeriesId } from "../../data/characters";
+import { RARITIES, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonOf, type Character, type Rarity, type SeriesId } from "../../data/characters";
 import { displayName, NICKNAME_MAX, onShelf, ownedInSeries, sellSpare, sellValue, seriesUnlocked, seriesUnlockProgress, setNickname, SHELF_MAX, toggleShelf, totalItems, chooseBuddy, setBuddyAside} from "../../game/state";
 import { nextMilestone, reached } from "../../game/buddy";
 import { FINISH_INFO, FINISHES, itemKey, SPECIAL_FINISHES, type Finish } from "../../game/finishes";
@@ -125,8 +125,17 @@ export function detail(c: Character, startFinish?: Finish): void {
 export function renderCollection(): HTMLElement {
   const s = store.state;
   const unlocked = seriesUnlocked(s, series);
+  const season = seasonOf(series);
+  const ownedHere = ownedInSeries(s.inventory, series);
   const list = charactersInSeries(series).filter((c) => filter === "all" || c.rarity === filter);
-  const seriesChips = SERIES.map((ser) => h("button", { class: "chip" + (series === ser.id ? " on" : ""), onclick: () => { series = ser.id; rerender(); } }, `${seriesUnlocked(s, ser.id) ? "" : "🔒 "}${ser.name}`));
+  const seriesChips = SERIES
+    // A shut season is only worth a chip once there is something of it to look at.
+    .filter((ser) => !seasonOf(ser.id) || seriesUnlocked(s, ser.id) || ownedInSeries(s.inventory, ser.id) > 0)
+    .map((ser) => {
+      const open = seriesUnlocked(s, ser.id);
+      const mark = seasonOf(ser.id) ? (open ? "🎃 " : "") : open ? "" : "🔒 ";
+      return h("button", { class: "chip" + (series === ser.id ? " on" : ""), onclick: () => { series = ser.id; rerender(); } }, `${mark}${ser.name}`);
+    });
   const chips = [h("button", { class: "chip" + (filter === "all" ? " on" : ""), onclick: () => { filter = "all"; rerender(); } }, "All"),
     ...RARITIES.map((r) => h("button", {
       class: "chip" + (filter === r ? " on" : ""),
@@ -137,7 +146,10 @@ export function renderCollection(): HTMLElement {
   const tiles = list.map((c) => {
     // One tile per dumpling however many finishes of it you have: the album is about
     // characters. The tile wears the best finish so a gold one is visible from the grid.
-    const n = unlocked ? totalOf(s.inventory, c.id) : 0;
+    // What you own always shows, locked series or shut season alike. The gate decides what
+    // a kid can BUY; hiding a dumpling they already have behind "???" takes back something
+    // they earned, and a season shuts every year.
+    const n = totalOf(s.inventory, c.id);
     const info = RARITY_INFO[c.rarity];
     const best = n ? bestFinish(s.inventory, c.id) : "plain";
     const art = dumplingEl(c, 80, { finish: best, decorative: true });
@@ -164,10 +176,12 @@ export function renderCollection(): HTMLElement {
     h("div", { class: "topbar" }, h("h1", null, "Collection"), h("span", { class: "pill" }, `${ownedInSeries(s.inventory, series)} / ${charactersInSeries(series).length}`)),
     h("p", { class: "muted small", style: "margin-bottom:8px" }, unlocked
       ? `${totalItems(s.inventory)} dumplings in your basket. Tap one to name it, shelve it, or sell a spare.`
-      : `Locked. Collect ${need} different ${from ? SERIES_BY_ID.get(from)?.name : ""} to unlock. ${have} / ${need} so far.`),
+      : season
+        ? `The baskets are closed. ${season.returns} The ${ownedHere} you caught are yours for good.`
+        : `Locked. Collect ${need} different ${from ? SERIES_BY_ID.get(from)?.name : ""} to unlock. ${have} / ${need} so far.`),
     h("div", { class: "chips", style: "padding-bottom:4px" }, ...seriesChips),
     h("div", { class: "chips" }, ...chips),
-    h("div", { class: "grid" + (unlocked ? "" : " locked-series") }, ...tiles),
+    h("div", { class: "grid" + (unlocked || ownedHere ? "" : " locked-series") }, ...tiles),
   );
 }
 

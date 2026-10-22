@@ -1,7 +1,7 @@
-import { BOTS, BOT_BY_ID, botAccepts, botProposal, type Bot } from "../../game/bots";
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
+import { BOTS, BOT_BY_ID, botAccepts, botPool, botProposal, type Bot } from "../../game/bots";
+import { CHARACTER_BY_ID, RARITY_INFO, type Character } from "../../data/characters";
 import { systemRng } from "../../game/rng";
-import { displayName, log, NICKNAME_MAX, seriesUnlocked, type Inventory, latchUnlocks } from "../../game/state";
+import { displayName, log, NICKNAME_MAX, ownedCharacterIds, seriesUnlocked, type Inventory, latchUnlocks } from "../../game/state";
 import { assess, canConfirm, confirm, createTrade, execute, owns, ownsSpares, setOffer, type SideKey, type Trade } from "../../game/trade";
 import { api, ApiError, type Friend } from "../../net/api";
 import { ensureRegistered, net, syncNow, token } from "../../net/sync";
@@ -427,7 +427,7 @@ export function renderTrade(): HTMLElement {
       const preview = sp.slice(0, 4).map(([key]) => dumplingEl(CHARACTER_BY_ID.get(characterIdOf(key)) as Character, 36, { finish: finishOf(key) }));
       return h("div", { class: "card neighbor" },
         h("span", { class: "face" }, bot.emoji),
-        h("div", { class: "grow" }, h("b", null, bot.name), h("div", { class: "small muted" }, `${sp.length} spares · ${Object.keys(inv).length} of ${CHARACTERS.length} collected`), h("div", { class: "row", style: "gap:2px;margin-top:4px" }, ...preview)),
+        h("div", { class: "grow" }, h("b", null, bot.name), h("div", { class: "small muted" }, `${sp.length} spares · ${ownedCharacterIds(inv).size} of ${botPool(bot)} collected`), h("div", { class: "row", style: "gap:2px;margin-top:4px" }, ...preview)),
         h("button", { class: "btn sm secondary", onclick: () => openWithBot(bot) }, "Trade"),
       );
     })),

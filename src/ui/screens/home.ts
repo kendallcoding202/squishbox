@@ -1,11 +1,11 @@
 import { boxesInSeries, BOXES, type Box } from "../../data/boxes";
-import { CHARACTERS, CHARACTER_BY_ID, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, type Character, type SeriesId } from "../../data/characters";
+import { CHARACTERS, CHARACTER_BY_ID, CORE_CHARACTERS, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonDaysLeft, seasonOf, type Character, type SeriesId } from "../../data/characters";
 import { momentText, nextMilestone, reached } from "../../game/buddy";
 import { characterIdOf, describeFinishOdds, FINISH_INFO, finishOf, type Finish } from "../../game/finishes";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
-  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCount, ownedInSeries,
+  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCoreCount, ownedCount, ownedInSeries,
   markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
 import { announce, confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
@@ -175,7 +175,10 @@ export function startOpen(box: Box): void {
 /** Pops a toast when a reward became claimable so the kid knows to look at the album. */
 function checkRewards(): void {
   const s = store.state;
-  const ready = SERIES.filter((ser) => seriesUnlocked(s, ser.id)).flatMap((ser) => rewardsForSeries(ser.id)).filter((r) => rewardStatus(s, r) === "ready");
+  // Same reach as albumCard: a seasonal goal a kid has finished is still worth a nudge in
+  // November, or the toast and the album would disagree about what is claimable.
+  const ready = SERIES.filter((ser) => seriesUnlocked(s, ser.id) || ownedInSeries(s.inventory, ser.id) > 0)
+    .flatMap((ser) => rewardsForSeries(ser.id)).filter((r) => rewardStatus(s, r) === "ready");
   if (ready.length) setTimeout(() => toast(`Album reward ready: ${ready[0]?.label}`), 1200);
 }
 
@@ -203,7 +206,9 @@ function luckyMeter(): HTMLElement {
 
 function albumCard(): HTMLElement {
   const s = store.state;
-  const rows = SERIES.filter((ser) => seriesUnlocked(s, ser.id)).flatMap((ser) => [
+  // A shut season still gets a row if there is anything in it: the count a kid earned does
+  // not vanish on November 2nd.
+  const rows = SERIES.filter((ser) => seriesUnlocked(s, ser.id) || ownedInSeries(s.inventory, ser.id) > 0).flatMap((ser) => [
     h("div", { class: "row between", style: "margin-top:10px" }, h("b", { class: "small" }, ser.name), h("span", { class: "small muted" }, `${ownedInSeries(s.inventory, ser.id)} / ${charactersInSeries(ser.id).length}`)),
     ...rewardsForSeries(ser.id).map((r) => {
     const status = rewardStatus(s, r);
@@ -228,9 +233,13 @@ function albumCard(): HTMLElement {
 
 function seriesTabs(): HTMLElement {
   const s = store.state;
-  return h("div", { class: "chips", style: "padding-top:0" }, ...SERIES.map((ser) => {
+  // A shut season is only worth a tab once a kid has something in it to look back at;
+  // before that it is a tab onto an empty shop.
+  const shown = SERIES.filter((ser) => !seasonOf(ser.id) || seriesUnlocked(s, ser.id) || ownedInSeries(s.inventory, ser.id) > 0);
+  return h("div", { class: "chips", style: "padding-top:0" }, ...shown.map((ser) => {
     const open = seriesUnlocked(s, ser.id);
-    return h("button", { class: "chip" + (shopSeries === ser.id ? " on" : ""), onclick: () => { shopSeries = ser.id; rerender(); } }, `${open ? "" : "🔒 "}${ser.name}`);
+    const mark = seasonOf(ser.id) ? (open ? "🎃 " : "") : open ? "" : "🔒 ";
+    return h("button", { class: "chip" + (shopSeries === ser.id ? " on" : ""), onclick: () => { shopSeries = ser.id; rerender(); } }, `${mark}${ser.name}`);
   }));
 }
 
@@ -248,6 +257,53 @@ function teaser(id: SeriesId): HTMLElement {
     h("p", { class: "small", style: "font-weight:700" }, `Collect ${need} different ${from} to unlock. ${have} / ${need} so far.`),
     h("div", { class: "bar", style: "height:8px;background:#f3ebe0;border-radius:4px;overflow:hidden;margin-top:6px" }, h("i", { style: `display:block;height:100%;width:${Math.round((have / need) * 100)}%;background:var(--accent)` })),
   );
+}
+
+/**
+ * A season that has shut. Deliberately not the progression teaser: there is no bar to fill
+ * and nothing to earn, so the only honest thing to say is when it comes back. The ones a kid
+ * already caught stay in the Collection either way — see renderCollection.
+ */
+function seasonClosed(id: SeriesId): HTMLElement {
+  const s = store.state;
+  const ser = SERIES_BY_ID.get(id);
+  const season = seasonOf(id);
+  const have = ownedInSeries(s.inventory, id);
+  const total = charactersInSeries(id).length;
+  const preview = charactersInSeries(id).filter((c) => c.rarity !== "legendary").slice(0, 6);
+  return h("div", { class: "card teaser" },
+    h("h3", null, `${ser?.name} is closed`),
+    h("p", { class: "muted small" }, season?.returns),
+    h("div", { class: "row", style: "justify-content:center;gap:4px;margin:12px 0" }, ...preview.map((c) => h("div", { class: "silhouette" }, dumplingEl(c, 56)))),
+    h("p", { class: "small", style: "font-weight:700" }, have
+      ? `You caught ${have} of ${total}. They are yours for good \u2014 look for them in your Collection.`
+      : "The spooky baskets come back when the leaves do."),
+  );
+}
+
+/** A season that is open, announced once at the top of the screen. Null the rest of the year. */
+function seasonBanner(today: Date): HTMLElement | null {
+  const s = store.state;
+  for (const ser of SERIES) {
+    const season = seasonOf(ser.id);
+    if (!season || !seriesUnlocked(s, ser.id, today)) continue;
+    const left = seasonDaysLeft(season, today);
+    const have = ownedInSeries(s.inventory, ser.id);
+    const card = h("div", { class: "card season" },
+      h("div", { class: "row between" },
+        h("div", { class: "grow" },
+          h("h3", null, `\u{1F383} ${ser.name} is open`),
+          h("p", { class: "muted small" }, `${ser.tagline} ${left === 1 ? "Last day!" : `${left} days left.`}`),
+        ),
+        h("span", { class: "pill" }, `${have} / ${charactersInSeries(ser.id).length}`),
+      ),
+      h("div", { class: "row", style: "justify-content:center;gap:4px;margin:10px 0 2px" },
+        ...charactersInSeries(ser.id).slice(0, 5).map((c) => dumplingEl(c, 48, { decorative: true }))),
+      h("button", { class: "btn block", style: "margin-top:10px", onclick: () => { shopSeries = ser.id; rerender(); document.getElementById("shop")?.scrollIntoView({ behavior: "smooth", block: "start" }); } }, "See the spooky baskets"),
+    );
+    return card;
+  }
+  return null;
 }
 
 function celebrateUnlock(id: SeriesId): void {
@@ -348,7 +404,7 @@ export function renderHome(): HTMLElement {
   const s = store.state;
   const today = new Date();
   const claimable = canClaimDaily(s, today);
-  const owned = ownedCount(s.inventory);
+  const owned = ownedCoreCount(s.inventory); // seasonal dumplings are extra, not part of "of 50"
 
   if (!s.onboarded && !document.querySelector(".overlay")) setTimeout(welcome, 50);
 
@@ -402,8 +458,9 @@ export function renderHome(): HTMLElement {
 
   return h("div", { class: "screen" },
     h("div", { class: "topbar" }, h("h1", null, "Squishbox"), h("div", { class: "row", style: "gap:8px" }, soundToggle(), coinsPill())),
-    h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today${soundEnabled() ? "" : " · sound off"}`),
+    h("p", { class: "muted small", style: "margin-bottom:12px" }, `${owned} of ${CORE_CHARACTERS.length} dumplings collected · ${boxesOpenedToday(s, today)} of ${s.parent.dailyBoxCap} boxes today${soundEnabled() ? "" : " · sound off"}`),
     daily,
+    seasonBanner(today),
     buddySection(),
     shelfSection(),
     recentChars.length ? h("div", null,
@@ -415,10 +472,11 @@ export function renderHome(): HTMLElement {
         return item;
       })),
     ) : null,
-    h("h2", null, "Shop"),
+    h("h2", { id: "shop" }, "Shop"),
     h("p", { class: "muted small", style: "margin:-6px 0 10px" }, "Odds are shown on every box, and they count the lucky meter. Coins are free: there is no real money in Squishbox."),
     seriesTabs(),
-    seriesUnlocked(s, shopSeries) ? h("div", { class: "shop-grid" }, ...boxesInSeries(shopSeries).map(boxCard)) : teaser(shopSeries),
+    seriesUnlocked(s, shopSeries) ? h("div", { class: "shop-grid" }, ...boxesInSeries(shopSeries).map(boxCard))
+      : seasonOf(shopSeries) ? seasonClosed(shopSeries) : teaser(shopSeries),
     h("h2", null, "Progress"),
     h("div", { class: "progress-grid" }, luckyMeter(), albumCard()),
   );

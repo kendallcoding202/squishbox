@@ -10,11 +10,12 @@ This is a **retention experiment**, not a product. The question it exists to ans
 - **Lucky meter.** A Rare or better is guaranteed every 10 boxes, shown as a meter that fills up.
 - **Opening.** Tap the box three times: steam, escalating hits, a glow tease for a Rare or better, then the reveal. Epics and legendaries get confetti; the legendary gets a golden flash.
 - **Squish.** Press and drag any dumpling to deform it; release and it springs back with a wobble. Squeaks, pops and fanfares are synthesized in-app (no audio files) with a mute button, plus native haptics on iOS.
-- **Collection.** 30 procedurally drawn dumplings (Series 1, "Steamer Pals") across four body shapes and five patterns. Owned ones are squishable; unowned ones show as silhouettes. Kids can give each one a nickname.
+- **Collection.** 50 procedurally drawn dumplings across two series ("Steamer Pals" and "Dim Sum Crew", the second earned by collecting 15 of the first), in four body shapes and six patterns, plus a seasonal set. Owned ones are squishable; unowned ones show as silhouettes. Kids can give each one a nickname.
 - **Steam Pot.** Sell spare dumplings for coins, always keeping the last copy. This is the in-app resale, in coins only.
 - **Album goals.** Coin rewards for completing each rarity set and the whole album.
 - **Trade with friends.** Each kid gets a friend code like `TARO-71`. Add a friend by code, then trade through the trading post server in `server/` with the same escrow rules as below. Parents can switch it off. See [docs/SERVER.md](docs/SERVER.md).
-- **Trade with neighbors.** Five neighbor bots use the same trade engine, so there's always someone to trade with. Rules:
+- **Seasonal runs.** A set that opens and shuts on the calendar instead of being earned: the Haunted Steamer (eight spooky dumplings and two boxes) is in the shop from 18 October to 1 November. The window is a month/day range, so the set comes back every year rather than being gone for good, and anything a kid caught stays in their Collection after it shuts. A seasonal series is read live from the date and never written into the save; see `seriesUnlocked` in `src/game/state.ts`.
+- **Trade with neighbors.** Six neighbor bots use the same trade engine, so there's always someone to trade with. One of them only knocks while the seasonal run is open. Rules:
   1. Atomic swap. Nobody gives first.
   2. Any change to either side clears both confirmations, so there is no last-second swap.
   3. A 3-second "read it over" cooldown after every change before Confirm unlocks.

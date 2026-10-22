@@ -57,6 +57,26 @@ export const BOXES: readonly Box[] = [
     tagline: "Mostly uncommon and up.",
     odds: { common: 20, uncommon: 42, rare: 26, epic: 9, legendary: 3 },
   },
+  // Seasonal. These two only appear while the Haunted Steamer window is open; the series
+  // itself is the gate, so nothing here needs a date of its own.
+  {
+    id: "treat",
+    name: "Trick-or-Treat Bag",
+    price: 12,
+    emoji: "🎃",
+    series: "s3",
+    tagline: "Spooky dumplings. In the basket until November 1st.",
+    odds: { common: 56, uncommon: 29, rare: 12, epic: 2.5, legendary: 0.5 },
+  },
+  {
+    id: "haunted",
+    name: "Haunted Steamer",
+    price: 40,
+    emoji: "👻",
+    series: "s3",
+    tagline: "Something is rattling the lid.",
+    odds: { common: 18, uncommon: 42, rare: 27, epic: 10, legendary: 3 },
+  },
 ];
 
 export function boxesInSeries(id: SeriesId): Box[] {

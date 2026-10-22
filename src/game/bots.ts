@@ -1,4 +1,5 @@
 import { BOX_BY_ID, type Box } from "../data/boxes";
+import { charactersInSeries, type SeriesId } from "../data/characters";
 import { itemKey, rollFinish } from "./finishes";
 import { rollBox } from "./odds";
 import type { Inventory } from "./state";
@@ -14,8 +15,8 @@ export interface Bot {
   minRatio: number;
   seed: number;
   startingBoxes: { box: string; n: number }[];
-  /** Only shows up once this series is unlocked. */
-  requiresSeries?: "s2";
+  /** Only shows up while this series is open. For a seasonal series that means the window. */
+  requiresSeries?: SeriesId;
 }
 
 export const BOTS: readonly Bot[] = [
@@ -24,9 +25,29 @@ export const BOTS: readonly Bot[] = [
   { id: "ruby", name: "Ruby", emoji: "🦊", minRatio: 1.1, seed: 33, startingBoxes: [{ box: "golden", n: 6 }, { box: "feast", n: 1 }] },
   { id: "sam", name: "Sam", emoji: "🐼", minRatio: 0.7, seed: 44, startingBoxes: [{ box: "steamer", n: 20 }] },
   { id: "lin", name: "Lin", emoji: "🐉", minRatio: 0.9, seed: 55, startingBoxes: [{ box: "bamboo", n: 16 }, { box: "jade", n: 3 }], requiresSeries: "s2" },
+  // Nox only knocks while the Haunted Steamer is open, which is the only way to trade for a
+  // spooky dumpling without buying the bag yourself.
+  { id: "nox", name: "Nox", emoji: "🦇", minRatio: 0.85, seed: 66, startingBoxes: [{ box: "treat", n: 15 }, { box: "haunted", n: 3 }], requiresSeries: "s3" },
 ];
 
 export const BOT_BY_ID: ReadonlyMap<string, Bot> = new Map(BOTS.map((b) => [b.id, b]));
+
+/**
+ * How many different dumplings a neighbor's boxes can actually contain, for the
+ * "N of M collected" line on their card. Derived from the boxes they open rather than the
+ * whole character list, which would have told a kid that Nox is missing fifty dumplings he
+ * was never able to get.
+ */
+export function botPool(bot: Bot): number {
+  const series = new Set<SeriesId>();
+  for (const { box } of bot.startingBoxes) {
+    const s = BOX_BY_ID.get(box)?.series;
+    if (s) series.add(s);
+  }
+  let n = 0;
+  for (const id of series) n += charactersInSeries(id).length;
+  return n;
+}
 
 export function seedBotInventory(bot: Bot): Inventory {
   const rng = mulberry32(bot.seed);

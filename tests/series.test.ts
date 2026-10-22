@@ -16,6 +16,12 @@ describe("series data", () => {
     for (const c of CHARACTERS) expect(ids.has(c.series), c.id).toBe(true);
     expect(new Set(CHARACTERS.map((c) => c.id)).size).toBe(CHARACTERS.length);
   });
+  it("names are unique, because the home screen looks dumplings up by name", () => {
+    // renderHome parses the open log back into characters by name for "Fresh from the
+    // steamer". Two dumplings sharing a name would show the wrong one.
+    const names = CHARACTERS.map((c) => c.name);
+    expect(new Set(names).size, [...names].sort().join(", ")).toBe(names.length);
+  });
   it("boxes only roll characters from their own series", () => {
     const rng = mulberry32(3);
     for (const box of BOXES) for (let i = 0; i < 300; i++) expect(rollBox(box, rng).series).toBe(box.series);

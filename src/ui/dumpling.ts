@@ -52,6 +52,14 @@ function face(kind: Face, ink: string): SVGElement[] {
     case "wink":
       out.push(eyeDot(39), eyeHappy(61), s("path", { d: "M44 70 q8 6 14 -2", stroke: ink, "stroke-width": 3, "stroke-linecap": "round", fill: "none" }));
       break;
+    case "fangs":
+      // Friendly-spooky: a wide grin with two little white teeth in it, not a snarl.
+      out.push(
+        eyeDot(39), eyeDot(61),
+        s("path", { d: "M41 68 q9 10 18 0 z", fill: ink }),
+        s("path", { d: "M45 68 l2 5 l2.4 -5 z M53 68 l2 5 l2.4 -5 z", fill: "#fff" }),
+      );
+      break;
   }
   return out;
 }
@@ -95,6 +103,21 @@ function hat(kind: Hat, body: string, ink: string): SVGElement[] {
       ...[0, 72, 144, 216, 288].map((a) => s("ellipse", { cx: 70, cy: 22, rx: 4.5, ry: 7, fill: "#ff8fb6", stroke: "#e2679a", "stroke-width": 1.2, transform: `rotate(${a} 70 28)` })),
       s("circle", { cx: 70, cy: 28, r: 4, fill: "#ffd23f", stroke: "#d9a400", "stroke-width": 1.2 }),
     ];
+    case "witch": return [
+      s("path", { d: "M50 2 q9 14 10 26 h-20 q1 -12 10 -26 z", fill: "#4b3b6b", stroke: "#342a4d", "stroke-width": 2, "stroke-linejoin": "round" }),
+      s("ellipse", { cx: 50, cy: 30, rx: 23, ry: 5.5, fill: "#4b3b6b", stroke: "#342a4d", "stroke-width": 2 }),
+      s("path", { d: "M39 26 h22", stroke: "#ffd23f", "stroke-width": 3.5, "stroke-linecap": "round" }),
+    ];
+    case "bat": return [
+      s("path", { d: "M48 30 q-12 -14 -24 -12 q7 5 5 12 q9 -4 19 0 z", fill: "#4a3f63", stroke: "#2f2744", "stroke-width": 1.8, "stroke-linejoin": "round" }),
+      s("path", { d: "M52 30 q12 -14 24 -12 q-7 5 -5 12 q-9 -4 -19 0 z", fill: "#4a3f63", stroke: "#2f2744", "stroke-width": 1.8, "stroke-linejoin": "round" }),
+      s("path", { d: "M44 28 l1 -10 l6 9 z M56 28 l-1 -10 l-6 9 z", fill: "#4a3f63", stroke: "#2f2744", "stroke-width": 1.5, "stroke-linejoin": "round" }),
+    ];
+    case "pumpkin": return [
+      s("path", { d: "M50 32 q-2 -10 2 -14", stroke: "#6b8f4a", "stroke-width": 5, "stroke-linecap": "round", fill: "none" }),
+      s("path", { d: "M52 19 q12 -8 14 3 q-11 6 -14 -3 z", fill: "#8fbf5f", stroke: "#6b8f4a", "stroke-width": 1.5, "stroke-linejoin": "round" }),
+      s("path", { d: "M50 30 q-13 -3 -15 -11", stroke: "#8fbf5f", "stroke-width": 2, "stroke-linecap": "round", fill: "none" }),
+    ];
     case "star": return [
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "#ffd23f", stroke: "#d9a400", "stroke-width": 1.5, "stroke-linejoin": "round" }),
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "none", stroke: edge, "stroke-width": 0 }),
@@ -135,6 +158,13 @@ function pattern(kind: Pattern, edge: string, clipId: string): SVGElement[] {
     case "hearts":
       for (const [x, y] of [[26, 48], [74, 48], [50, 84]] as const)
         g.appendChild(s("path", { d: `M${x} ${y + 3} l-4 -4 a2.4 2.4 0 0 1 4 -3 a2.4 2.4 0 0 1 4 3 z`, fill: "#ff6b8a", opacity: 0.85 }));
+      break;
+    case "web":
+      // Anchored in the bottom-left corner and clipped to the body, so it stays well clear
+      // of the face: radials out of the corner, then arcs across them.
+      g.appendChild(s("path", { d: "M14 86 L14 50 M14 86 L27 57 M14 86 L39 69 M14 86 L48 86", stroke: edge, "stroke-width": 1.5, "stroke-linecap": "round", fill: "none" }));
+      for (const r of [13, 24, 34])
+        g.appendChild(s("path", { d: `M${14 + r} 86 A${r} ${r} 0 0 0 14 ${86 - r}`, stroke: edge, "stroke-width": 1.3, fill: "none" }));
       break;
   }
   out.push(g);

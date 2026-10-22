@@ -10,12 +10,26 @@ export const RARITY_INFO: Record<Rarity, { label: string; color: string; glow: s
   legendary: { label: "Legendary", color: "#f2a900", glow: "#ffe08a", value: 150 },
 };
 
-export type Face = "smile" | "happy" | "sleepy" | "wow" | "cat" | "wink";
-export type Hat = "none" | "bow" | "sprout" | "crown" | "beanie" | "glasses" | "halo" | "star" | "chef" | "flower";
+export type Face = "smile" | "happy" | "sleepy" | "wow" | "cat" | "wink" | "fangs";
+export type Hat = "none" | "bow" | "sprout" | "crown" | "beanie" | "glasses" | "halo" | "star" | "chef" | "flower" | "witch" | "bat" | "pumpkin";
 export type Shape = "round" | "tall" | "wide" | "bun";
-export type Pattern = "none" | "speckle" | "stripe" | "swirl" | "hearts" | "dots";
+export type Pattern = "none" | "speckle" | "stripe" | "swirl" | "hearts" | "dots" | "web";
 
-export type SeriesId = "s1" | "s2";
+export type SeriesId = "s1" | "s2" | "s3";
+
+/**
+ * A month/day window, inclusive at both ends. Deliberately not absolute dates: a limited
+ * run that comes back every year is still limited, and it never leaves a kid who started
+ * in November looking at a set they can never reach.
+ *
+ * A window whose end falls before its start wraps the new year, so Dec 20 -> Jan 5 works.
+ */
+export interface Season {
+  from: { month: number; day: number };
+  to: { month: number; day: number };
+  /** Shown while the window is shut, e.g. "Back next October." */
+  returns: string;
+}
 
 export interface Series {
   id: SeriesId;
@@ -24,11 +38,22 @@ export interface Series {
   /** How many distinct dumplings of the previous series unlock this one. 0 = always open. */
   unlockAt: number;
   unlockFrom: SeriesId | null;
+  /**
+   * Set on a seasonal series: it opens and shuts on the calendar instead of being earned.
+   * Read live from the date and never latched into the save (see state.ts), which is the
+   * one place a series differs from the progression ones.
+   */
+  season?: Season;
 }
 
 export const SERIES: readonly Series[] = [
   { id: "s1", name: "Steamer Pals", tagline: "The originals.", unlockAt: 0, unlockFrom: null },
   { id: "s2", name: "Dim Sum Crew", tagline: "Shumai, har gow, buns and rolls.", unlockAt: 15, unlockFrom: "s1" },
+  {
+    id: "s3", name: "Haunted Steamer", tagline: "Eight spooky dumplings, in the basket until November 1st.",
+    unlockAt: 0, unlockFrom: null,
+    season: { from: { month: 10, day: 18 }, to: { month: 11, day: 1 }, returns: "Back next October." },
+  },
 ];
 
 export const SERIES_BY_ID: ReadonlyMap<SeriesId, Series> = new Map(SERIES.map((x) => [x.id, x]));
@@ -50,6 +75,7 @@ export interface Character {
 
 const S: SeriesId = "s1";
 const D: SeriesId = "s2";
+const H: SeriesId = "s3";
 
 /** Series 1: thirty dumplings. Art is procedural SVG, see ui/dumpling.ts. */
 export const CHARACTERS: readonly Character[] = [
@@ -115,6 +141,24 @@ export const CHARACTERS: readonly Character[] = [
   { id: "2e01", name: "Emperor Gow", rarity: "epic", series: D, body: "#ffe1b8", blush: "#f7a36a", face: "smile", hat: "crown", pleats: 7, shape: "round", pattern: "hearts", flavor: "Sits on a cushion of ginger." },
   // Legendary (1)
   { id: "2l01", name: "Jade Dragon", rarity: "legendary", series: D, body: "#8fe0c4", blush: "#3fbf92", face: "wink", hat: "flower", pleats: 7, shape: "tall", pattern: "swirl", flavor: "Steam curls into a dragon when it opens." },
+
+  // ---- Series 3: the Haunted Steamer. Seasonal, see SERIES. Eight dumplings, one of every
+  // rarity band, because a box has to be able to roll whatever its odds say.
+  // Bodies stay mid-to-light on purpose: the face ink is a fixed dark brown, so a properly
+  // spooky near-black dumpling would have no face at all.
+  // Commons (2)
+  { id: "3c01", name: "Pumpkin Bao", rarity: "common", series: H, body: "#ffb45e", blush: "#ef8a36", face: "happy", hat: "pumpkin", pleats: 5, shape: "round", pattern: "stripe", flavor: "Steamed inside a pumpkin. Smells like October." },
+  { id: "3c02", name: "Boo", rarity: "common", series: H, body: "#f7f7fb", blush: "#d8dced", face: "wow", hat: "none", pleats: 4, shape: "tall", pattern: "none", flavor: "Not actually scary. Keeps trying." },
+  // Uncommons (2)
+  { id: "3u01", name: "Candy Corn", rarity: "uncommon", series: H, body: "#ffcf6b", blush: "#ff9f4a", face: "wink", hat: "none", pleats: 4, shape: "tall", pattern: "stripe", flavor: "Banded like the sweet. Sticky the whole way down." },
+  { id: "3u02", name: "Batty", rarity: "uncommon", series: H, body: "#cbb8e8", blush: "#9d80cc", face: "fangs", hat: "bat", pleats: 5, shape: "wide", pattern: "none", flavor: "Sleeps upside down in the steamer lid." },
+  // Rares (2)
+  { id: "3r01", name: "Witchy", rarity: "rare", series: H, body: "#b79be0", blush: "#8a6abf", face: "cat", hat: "witch", pleats: 6, shape: "round", pattern: "swirl", flavor: "Stirs the soup without touching it." },
+  { id: "3r02", name: "Webby", rarity: "rare", series: H, body: "#e4e7ef", blush: "#b6bdd0", face: "smile", hat: "none", pleats: 6, shape: "bun", pattern: "web", flavor: "Spun a web across the whole basket. Very politely." },
+  // Epic (1)
+  { id: "3e01", name: "Jack", rarity: "epic", series: H, body: "#ff9a3c", blush: "#e36f16", face: "fangs", hat: "pumpkin", pleats: 7, shape: "bun", pattern: "web", flavor: "Lit from the inside. Grins all night long." },
+  // Legendary (1)
+  { id: "3l01", name: "Midnight", rarity: "legendary", series: H, body: "#9d87d6", blush: "#6f5aa8", face: "wink", hat: "witch", pleats: 7, shape: "tall", pattern: "dots", flavor: "Full of little stars. Only ever in the basket at Halloween." },
 ];
 
 export const CHARACTER_BY_ID: ReadonlyMap<string, Character> = new Map(CHARACTERS.map((c) => [c.id, c]));
@@ -126,3 +170,33 @@ export function charactersOfRarity(r: Rarity): Character[] {
 export function charactersInSeries(id: SeriesId): Character[] {
   return CHARACTERS.filter((c) => c.series === id);
 }
+
+/** Is a month/day window open on this date? Inclusive at both ends; wraps the new year. */
+export function seasonOpen(season: Season, date: Date): boolean {
+  const md = (m: number, d: number) => m * 100 + d;
+  const today = md(date.getMonth() + 1, date.getDate());
+  const from = md(season.from.month, season.from.day);
+  const to = md(season.to.month, season.to.day);
+  return from <= to ? today >= from && today <= to : today >= from || today <= to;
+}
+
+/** Whole days left in a window, counting today as one. 0 once it has shut. */
+export function seasonDaysLeft(season: Season, date: Date): number {
+  if (!seasonOpen(season, date)) return 0;
+  const y = date.getFullYear();
+  let end = new Date(y, season.to.month - 1, season.to.day, 23, 59, 59, 999);
+  // A window that wraps the year ends next year when we are still on the near side of it.
+  if (end.getTime() < date.getTime()) end = new Date(y + 1, season.to.month - 1, season.to.day, 23, 59, 59, 999);
+  return Math.max(1, Math.ceil((end.getTime() - date.getTime()) / 86_400_000));
+}
+
+export function seasonOf(id: SeriesId): Season | null {
+  return SERIES_BY_ID.get(id)?.season ?? null;
+}
+
+/**
+ * The sets that are always there. The header reads "N of 50 collected" against this list,
+ * not CHARACTERS: a seasonal run must not move the number everyone is working toward, or
+ * a kid who misses Halloween is permanently stuck at 50 of 58.
+ */
+export const CORE_CHARACTERS: readonly Character[] = CHARACTERS.filter((c) => !seasonOf(c.series));
