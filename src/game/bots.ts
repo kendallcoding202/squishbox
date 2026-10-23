@@ -28,6 +28,7 @@ export const BOTS: readonly Bot[] = [
   // Nox only knocks while the Haunted Steamer is open, which is the only way to trade for a
   // spooky dumpling without buying the bag yourself.
   { id: "nox", name: "Nox", emoji: "🦇", minRatio: 0.85, seed: 66, startingBoxes: [{ box: "treat", n: 15 }, { box: "haunted", n: 3 }], requiresSeries: "s3" },
+  { id: "holly", name: "Holly", emoji: "☃️", minRatio: 0.85, seed: 77, startingBoxes: [{ box: "stocking", n: 15 }, { box: "sleigh", n: 3 }], requiresSeries: "s4" },
 ];
 
 export const BOT_BY_ID: ReadonlyMap<string, Bot> = new Map(BOTS.map((b) => [b.id, b]));

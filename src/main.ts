@@ -3,7 +3,7 @@ import { clear, confetti, h, toast } from "./ui/dom";
 import { onNetChange, setDeliveryHandler, startSync } from "./net/sync";
 import { CHARACTER_BY_ID } from "./data/characters";
 import { success } from "./ui/sound";
-import { renderBuddy } from "./ui/screens/buddy";
+import { pauseBuddyLife, renderBuddy } from "./ui/screens/buddy";
 import { onCollectionRerender, renderCollection } from "./ui/screens/collection";
 import { onHomeRerender, renderHome } from "./ui/screens/home";
 import { lockParents, onParentsRerender, renderParents } from "./ui/screens/parents";
@@ -38,6 +38,7 @@ function render(): void {
 function go(tab: Tab): void {
   if (tab !== "parents") lockParents();
   if (tab !== "trade") pauseTradeTimers();
+  if (tab !== "buddy") pauseBuddyLife();
   current = tab;
   history.replaceState(null, "", `#${tab}`);
   window.scrollTo(0, 0);
@@ -52,6 +53,12 @@ store.onSaveError(() => {
   toast("This device isn't saving the collection. Ask a grown-up to check storage space.");
 });
 document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
+// Nothing in this game should carry on in the background. The buddy's room in particular
+// must not be mid-wander with a timer pending while the app is away; it picks up on return.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") pauseBuddyLife();
+  else if (current === "buddy") render(); // a cleared loop only restarts on a rebuild
+});
 onCollectionRerender(render);
 onHomeRerender(render);
 onTradeRerender(render);

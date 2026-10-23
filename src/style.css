@@ -260,8 +260,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
    Every animation here is triggered by a tap and plays once. Nothing loops waiting to be
    noticed, and nothing changes on its own — the room is a toy box, not a responsibility. */
 .room { position: relative; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
-.room-wall { position: relative; height: 168px; background: linear-gradient(180deg, #f9ecd9, #f0dabc); }
-.window { position: absolute; left: 26px; top: 26px; width: 112px; height: 88px; border-radius: 12px; overflow: hidden;
+.room-wall { position: relative; height: 146px; background: linear-gradient(180deg, #f9ecd9, #f0dabc); }
+/* Positioned from the window spot's x so the buddy can stand under it and look out. */
+.window { position: absolute; top: 26px; transform: translateX(-50%); width: 112px; height: 88px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(180deg, #bfe4f5, #e3f2fb); border: 5px solid #e6d0ae; }
 .window .sun { position: absolute; right: 12px; top: 10px; width: 24px; height: 24px; border-radius: 50%; background: #ffd23f;
   box-shadow: 0 0 16px rgba(255, 210, 63, 0.85); }
@@ -274,54 +275,82 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .room-shelf { position: absolute; right: 16px; top: 40px; display: flex; gap: 10px; padding: 6px 10px 9px;
   background: linear-gradient(180deg, #d9a26b, #b9814d); border-radius: 4px; box-shadow: 0 5px 9px rgba(90,60,20,0.2); }
 .decor { font-size: 22px; line-height: 1; }
-.room-floor { position: relative; height: 148px; background: linear-gradient(180deg, #d9a26b, #c3894f); }
-/* A round rug the buddy sits on, so it reads as a place rather than a floating sprite. */
-.cushion { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
-  width: 190px; height: 46px; border-radius: 50%;
+/* Two lanes deep. The back lane sits higher and smaller, which is all it takes for a
+   side-on room to read as a space the buddy can move around in rather than a backdrop.
+   Everything is positioned from its spot's x (see game/room.ts) so the furniture and the
+   engine cannot drift apart. */
+/* The back strip is a shade cooler and the join to the wall has a skirting board, so the
+   two lanes read as near and far floor rather than one flat slab of brown. */
+.room-floor { position: relative; height: 196px;
+  background: linear-gradient(180deg, #c89158 0 52px, #d9a26b 52px, #c3894f 100%); }
+.room-floor::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 7px;
+  background: linear-gradient(180deg, #e8d0ad, #cf9f71); }
+.prop { position: absolute; transform: translateX(-50%); font-size: 34px; line-height: 1;
+  cursor: pointer; touch-action: manipulation; bottom: 18px; z-index: 2; }
+.prop.back { bottom: 100px; font-size: 27px; z-index: 0; }
+.prop.pop { animation: prop-pop 0.4s ease-out; }
+@keyframes prop-pop { 0% { transform: translateX(-50%) scale(1); } 45% { transform: translateX(-50%) scale(1.35); } 100% { transform: translateX(-50%) scale(1); } }
+/* A round rug the buddy sits on, so the middle of the room reads as a place. */
+.prop.cushion { bottom: 8px; width: 170px; height: 42px; border-radius: 50%;
   background: radial-gradient(ellipse at 50% 50%, #f3b6cd 0 40%, #e58cae 40% 70%, #d97ba1 70%);
-  opacity: 0.9; box-shadow: 0 3px 8px rgba(90,60,20,0.15); }
-.buddy-stage { position: absolute; left: 50%; bottom: 28px; width: 150px; height: 150px;
-  margin-left: -75px; cursor: pointer; touch-action: manipulation; }
+  opacity: 0.9; box-shadow: 0 3px 8px rgba(90,60,20,0.15); z-index: 1; }
+/* The buddy is positioned by `left` and lifted into the back lane by `.far`. margin-left
+   does the centring rather than a transform, which `.far` needs for the scale and the
+   act-* animations need for everything else. */
+.buddy-stage { position: absolute; bottom: 12px; width: 132px; height: 132px; margin-left: -66px;
+  cursor: pointer; touch-action: manipulation; transform-origin: 50% 100%; z-index: 3; }
+.buddy-stage.far { bottom: 96px; transform: scale(0.76); z-index: 1; }
 .buddy-actor { width: 100%; height: 100%; transform-origin: 50% 92%; }
-.bowl { position: absolute; left: 46px; bottom: 26px; font-size: 30px; }
-.cup { position: absolute; right: 46px; bottom: 26px; font-size: 28px; }
+.buddy-stage.walking .buddy-actor { animation: b-walk 0.46s ease-in-out infinite; }
+.buddy-says { min-height: 20px; margin-bottom: 8px; }
 
-/* A treat arcs in from the edge of the room and meets the buddy. */
-.treat { position: absolute; bottom: 34px; font-size: 30px; pointer-events: none; opacity: 0; }
-.treat.from-left { left: -46px; animation: treat-l 1.1s ease-in-out forwards; }
-.treat.from-right { right: -46px; animation: treat-r 1.1s ease-in-out forwards; }
-@keyframes treat-l {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
-  20% { opacity: 1; }
-  60% { transform: translate(74px, -34px) scale(1); }
-  100% { opacity: 0; transform: translate(80px, -6px) scale(0.4); }
+/* What it does when it gets somewhere. All small and slow: these play constantly, so
+   anything sharp would turn the room into a twitchy place to sit and watch. */
+@keyframes b-walk {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-5px) rotate(2deg); }
 }
-@keyframes treat-r {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
-  20% { opacity: 1; }
-  60% { transform: translate(-74px, -34px) scale(1); }
-  100% { opacity: 0; transform: translate(-80px, -6px) scale(0.4); }
+.act-nap { animation: b-nap 2.6s ease-in-out; }
+@keyframes b-nap {
+  0%, 100% { transform: scale(1, 1); }
+  25% { transform: scale(1.04, 0.96); }
+  50% { transform: scale(0.98, 1.02); }
+  75% { transform: scale(1.04, 0.96); }
+}
+.act-gaze { animation: b-gaze 2.4s ease-in-out; }
+@keyframes b-gaze {
+  0%, 100% { transform: rotate(0) translateY(0); }
+  35%, 65% { transform: rotate(-7deg) translateY(-3px); }
+}
+.act-sniff { animation: b-sniff 1.8s ease-in-out; }
+@keyframes b-sniff {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  30% { transform: translateX(7px) rotate(5deg); }
+  60% { transform: translateX(3px) rotate(2deg); }
+}
+.act-dig { animation: b-dig 1.8s ease-in-out; }
+@keyframes b-dig {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  20%, 60% { transform: translateY(2px) rotate(-5deg); }
+  40%, 80% { transform: translateY(2px) rotate(5deg); }
+}
+.act-nibble { animation: b-nibble 1.6s ease-in-out; }
+@keyframes b-nibble {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25%, 75% { transform: translateY(4px) rotate(-4deg) scale(1.02, 0.98); }
+  50% { transform: translateY(1px) rotate(-2deg); }
+}
+.act-sip { animation: b-sip 1.6s ease-in-out; }
+@keyframes b-sip {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  30%, 70% { transform: translateY(3px) rotate(4deg); }
 }
 
-/* Tricks. Each is earned by turning up, then playable whenever the kid likes. */
 .act-wiggle, .act-settle { animation: b-wiggle 0.65s ease-in-out; }
 @keyframes b-wiggle {
   0%, 100% { transform: rotate(0) scale(1, 1); }
   25% { transform: rotate(-7deg) scale(1.05, 0.95); }
   75% { transform: rotate(7deg) scale(0.97, 1.03); }
-}
-.act-eat { animation: b-eat 1.1s ease-in-out; }
-@keyframes b-eat {
-  0%, 45%, 100% { transform: scale(1, 1); }
-  58% { transform: scale(1.12, 0.88); }
-  70% { transform: scale(0.94, 1.08); }
-  84% { transform: scale(1.05, 0.96); }
-}
-.act-drink { animation: b-drink 1.1s ease-in-out; }
-@keyframes b-drink {
-  0%, 40%, 100% { transform: rotate(0); }
-  60% { transform: rotate(-11deg); }
-  80% { transform: rotate(5deg); }
 }
 .act-bounce { animation: b-bounce 0.7s ease-in-out; }
 @keyframes b-bounce {

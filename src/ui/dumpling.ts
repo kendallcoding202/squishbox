@@ -118,6 +118,22 @@ function hat(kind: Hat, body: string, ink: string): SVGElement[] {
       s("path", { d: "M52 19 q12 -8 14 3 q-11 6 -14 -3 z", fill: "#8fbf5f", stroke: "#6b8f4a", "stroke-width": 1.5, "stroke-linejoin": "round" }),
       s("path", { d: "M50 30 q-13 -3 -15 -11", stroke: "#8fbf5f", "stroke-width": 2, "stroke-linecap": "round", fill: "none" }),
     ];
+    case "santa": return [
+      s("path", { d: "M26 32 q4 -26 26 -26 q16 0 18 14 q-18 4 -44 12 z", fill: "#e5514a", stroke: "#b83a35", "stroke-width": 2, "stroke-linejoin": "round" }),
+      s("path", { d: "M24 32 q26 -8 48 -2 q-24 8 -48 2 z", fill: "#fff", stroke: "#ded6c9", "stroke-width": 1.5, "stroke-linejoin": "round" }),
+      s("circle", { cx: 72, cy: 20, r: 5.5, fill: "#fff", stroke: "#ded6c9", "stroke-width": 1.5 }),
+    ];
+    case "antlers": return [
+      // Rooted at y=36 rather than 30: the hat group is shifted up on a tall body, and
+      // starting any higher left the antlers floating above the head.
+      s("path", { d: "M41 36 q-7 -16 -5 -26 M36 12 q-7 -3 -9 -9 M37 19 q7 -4 9 -10", stroke: "#a9743f", "stroke-width": 3, "stroke-linecap": "round", fill: "none" }),
+      s("path", { d: "M59 36 q7 -16 5 -26 M64 12 q7 -3 9 -9 M63 19 q-7 -4 -9 -10", stroke: "#a9743f", "stroke-width": 3, "stroke-linecap": "round", fill: "none" }),
+    ];
+    case "earmuffs": return [
+      s("path", { d: "M26 40 q24 -24 48 0", stroke: "#6b8cc4", "stroke-width": 4, "stroke-linecap": "round", fill: "none" }),
+      s("ellipse", { cx: 24, cy: 44, rx: 8, ry: 10, fill: "#9fb8e0", stroke: "#6b8cc4", "stroke-width": 2 }),
+      s("ellipse", { cx: 76, cy: 44, rx: 8, ry: 10, fill: "#9fb8e0", stroke: "#6b8cc4", "stroke-width": 2 }),
+    ];
     case "star": return [
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "#ffd23f", stroke: "#d9a400", "stroke-width": 1.5, "stroke-linejoin": "round" }),
       s("path", { d: "M74 12 l3.5 7.5 l8 1 l-6 5.5 l1.5 8 l-7 -4 l-7 4 l1.5 -8 l-6 -5.5 l8 -1 z", fill: "none", stroke: edge, "stroke-width": 0 }),
@@ -158,6 +174,16 @@ function pattern(kind: Pattern, edge: string, clipId: string): SVGElement[] {
     case "hearts":
       for (const [x, y] of [[26, 48], [74, 48], [50, 84]] as const)
         g.appendChild(s("path", { d: `M${x} ${y + 3} l-4 -4 a2.4 2.4 0 0 1 4 -3 a2.4 2.4 0 0 1 4 3 z`, fill: "#ff6b8a", opacity: 0.85 }));
+      break;
+    case "snow":
+      // Six-armed flakes rather than plain dots, so it reads as snow and not as the dots
+      // pattern in another colour. Three bars rotated about the centre make the six arms.
+      for (const [x, y, r] of [[28, 50, 5], [70, 46, 4], [22, 74, 3.5], [76, 72, 4.5], [50, 84, 3.5]] as const)
+        for (const a of [0, 60, 120])
+          g.appendChild(s("path", {
+            d: `M${x - r} ${y} h${r * 2}`, transform: `rotate(${a} ${x} ${y})`,
+            stroke: "#fff", "stroke-width": 1.8, "stroke-linecap": "round", opacity: 0.95,
+          }));
       break;
     case "web":
       // Anchored in the bottom-left corner and clipped to the body, so it stays well clear

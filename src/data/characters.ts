@@ -11,11 +11,11 @@ export const RARITY_INFO: Record<Rarity, { label: string; color: string; glow: s
 };
 
 export type Face = "smile" | "happy" | "sleepy" | "wow" | "cat" | "wink" | "fangs";
-export type Hat = "none" | "bow" | "sprout" | "crown" | "beanie" | "glasses" | "halo" | "star" | "chef" | "flower" | "witch" | "bat" | "pumpkin";
+export type Hat = "none" | "bow" | "sprout" | "crown" | "beanie" | "glasses" | "halo" | "star" | "chef" | "flower" | "witch" | "bat" | "pumpkin" | "santa" | "antlers" | "earmuffs";
 export type Shape = "round" | "tall" | "wide" | "bun";
-export type Pattern = "none" | "speckle" | "stripe" | "swirl" | "hearts" | "dots" | "web";
+export type Pattern = "none" | "speckle" | "stripe" | "swirl" | "hearts" | "dots" | "web" | "snow";
 
-export type SeriesId = "s1" | "s2" | "s3";
+export type SeriesId = "s1" | "s2" | "s3" | "s4";
 
 /**
  * A month/day window, inclusive at both ends. Deliberately not absolute dates: a limited
@@ -54,6 +54,13 @@ export const SERIES: readonly Series[] = [
     unlockAt: 0, unlockFrom: null,
     season: { from: { month: 10, day: 18 }, to: { month: 11, day: 1 }, returns: "Back next October." },
   },
+  {
+    id: "s4", name: "Snowy Steamer", tagline: "Eight frosty dumplings, in the basket until January 5th.",
+    unlockAt: 0, unlockFrom: null,
+    // Wraps the new year, which seasonOpen handles: from <= to is false, so the window is
+    // "December or early January" rather than the empty range between them.
+    season: { from: { month: 12, day: 1 }, to: { month: 1, day: 5 }, returns: "Back next December." },
+  },
 ];
 
 export const SERIES_BY_ID: ReadonlyMap<SeriesId, Series> = new Map(SERIES.map((x) => [x.id, x]));
@@ -76,6 +83,7 @@ export interface Character {
 const S: SeriesId = "s1";
 const D: SeriesId = "s2";
 const H: SeriesId = "s3";
+const W: SeriesId = "s4";
 
 /** Series 1: thirty dumplings. Art is procedural SVG, see ui/dumpling.ts. */
 export const CHARACTERS: readonly Character[] = [
@@ -159,6 +167,22 @@ export const CHARACTERS: readonly Character[] = [
   { id: "3e01", name: "Jack", rarity: "epic", series: H, body: "#ff9a3c", blush: "#e36f16", face: "fangs", hat: "pumpkin", pleats: 7, shape: "bun", pattern: "web", flavor: "Lit from the inside. Grins all night long." },
   // Legendary (1)
   { id: "3l01", name: "Midnight", rarity: "legendary", series: H, body: "#9d87d6", blush: "#6f5aa8", face: "wink", hat: "witch", pleats: 7, shape: "tall", pattern: "dots", flavor: "Full of little stars. Only ever in the basket at Halloween." },
+
+  // ---- Series 4: the Snowy Steamer. Seasonal, 1 December to 5 January. Eight dumplings.
+  // Names dodge Snowball, Mintie, Cocoa and Pebble, which Series 1 already took.
+  // Commons (2)
+  { id: "4c01", name: "Frost", rarity: "common", series: W, body: "#bfe0f5", blush: "#86b8dc", face: "smile", hat: "none", pleats: 5, shape: "round", pattern: "none", flavor: "Cold on the outside, steaming on the inside." },
+  { id: "4c02", name: "Jingle", rarity: "common", series: W, body: "#fdf3e0", blush: "#f0b9a0", face: "happy", hat: "earmuffs", pleats: 4, shape: "bun", pattern: "none", flavor: "Rings very faintly when it bounces." },
+  // Uncommons (2)
+  { id: "4u01", name: "Nutmeg", rarity: "uncommon", series: W, body: "#e3bb92", blush: "#c08f63", face: "wink", hat: "santa", pleats: 5, shape: "wide", pattern: "speckle", flavor: "Smells like the whole kitchen at once." },
+  { id: "4u02", name: "Tinsel", rarity: "uncommon", series: W, body: "#d5efdc", blush: "#8fc9a6", face: "smile", hat: "bow", pleats: 6, shape: "tall", pattern: "snow", flavor: "Wrapped itself up and forgot how to get out." },
+  // Rares (2)
+  { id: "4r01", name: "Comet", rarity: "rare", series: W, body: "#f6ddc4", blush: "#d79f74", face: "wow", hat: "antlers", pleats: 6, shape: "tall", pattern: "none", flavor: "Practising for the big night. Still a bit wobbly." },
+  { id: "4r02", name: "Gingersnap", rarity: "rare", series: W, body: "#d8a268", blush: "#b07440", face: "happy", hat: "none", pleats: 5, shape: "bun", pattern: "dots", flavor: "Iced by someone in a hurry. Doesn't mind." },
+  // Epic (1)
+  { id: "4e01", name: "Saint Nick", rarity: "epic", series: W, body: "#f08a7a", blush: "#cf5c4c", face: "smile", hat: "santa", pleats: 7, shape: "round", pattern: "snow", flavor: "Knows which dumplings have been good." },
+  // Legendary (1)
+  { id: "4l01", name: "Northstar", rarity: "legendary", series: W, body: "#8ea3d6", blush: "#6478b0", face: "wink", hat: "star", pleats: 7, shape: "tall", pattern: "snow", flavor: "The one the others steer by. Very slightly glowing." },
 ];
 
 export const CHARACTER_BY_ID: ReadonlyMap<string, Character> = new Map(CHARACTERS.map((c) => [c.id, c]));

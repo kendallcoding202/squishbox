@@ -77,6 +77,24 @@ export const BOXES: readonly Box[] = [
     tagline: "Something is rattling the lid.",
     odds: { common: 18, uncommon: 42, rare: 27, epic: 10, legendary: 3 },
   },
+  {
+    id: "stocking",
+    name: "Stocking",
+    price: 12,
+    emoji: "🧦",
+    series: "s4",
+    tagline: "Frosty dumplings. In the basket until January 5th.",
+    odds: { common: 56, uncommon: 29, rare: 12, epic: 2.5, legendary: 0.5 },
+  },
+  {
+    id: "sleigh",
+    name: "Sleigh Box",
+    price: 40,
+    emoji: "🛷",
+    series: "s4",
+    tagline: "Packed for the long trip.",
+    odds: { common: 18, uncommon: 42, rare: 27, epic: 10, legendary: 3 },
+  },
 ];
 
 export function boxesInSeries(id: SeriesId): Box[] {

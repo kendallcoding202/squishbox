@@ -47,8 +47,8 @@ describe("the Haunted Steamer", () => {
     expect(charactersInSeries("s3").length).toBe(8);
     expect(boxesInSeries("s3").length).toBe(2);
     expect(CORE_CHARACTERS.length).toBe(50);
-    expect(CORE_CHARACTERS.some((c) => c.series === "s3")).toBe(false);
-    expect(CHARACTERS.length).toBe(58);
+    expect(CORE_CHARACTERS.some((c) => seasonOf(c.series))).toBe(false);
+    expect(CHARACTERS.length).toBe(66); // 50 core + two seasonal sets of eight
   });
 
   it("opens and shuts on the date, not on what you own", () => {
@@ -117,9 +117,52 @@ describe("the Haunted Steamer", () => {
     expect(claimReward(s, album.id, Date.now())).toBe(0); // never twice
   });
 
-  it("is the only seasonal series, and the others are earned not dated", () => {
+  it("is one of two seasonal series; the progression ones are earned, not dated", () => {
     expect(seasonOf("s1")).toBeNull();
     expect(seasonOf("s2")).toBeNull();
     expect(seasonOf("s3")).not.toBeNull();
+    expect(seasonOf("s4")).not.toBeNull();
+  });
+});
+
+describe("the Snowy Steamer", () => {
+  const winter = SERIES_BY_ID.get("s4")!.season as Season;
+
+  it("has eight dumplings and its own two boxes", () => {
+    expect(charactersInSeries("s4").length).toBe(8);
+    expect(boxesInSeries("s4").length).toBe(2);
+  });
+
+  it("runs across the new year, which is the wrap case", () => {
+    expect(seasonOpen(winter, on("2026-11-30"))).toBe(false);
+    expect(seasonOpen(winter, on("2026-12-01"))).toBe(true);
+    expect(seasonOpen(winter, on("2026-12-25"))).toBe(true);
+    expect(seasonOpen(winter, on("2027-01-01"))).toBe(true); // the far side of the wrap
+    expect(seasonOpen(winter, on("2027-01-05"))).toBe(true);
+    expect(seasonOpen(winter, on("2027-01-06"))).toBe(false);
+  });
+
+  it("counts days left across the year boundary", () => {
+    expect(seasonDaysLeft(winter, on("2027-01-05"))).toBe(1);
+    expect(seasonDaysLeft(winter, on("2026-12-31"))).toBe(6); // 31 Dec through 5 Jan
+    expect(seasonDaysLeft(winter, on("2026-11-15"))).toBe(0);
+  });
+
+  it("does not overlap the Halloween run, so only one banner is ever up", () => {
+    const dates = ["2026-10-25", "2026-11-15", "2026-12-25", "2027-01-03", "2027-03-01"];
+    for (const d of dates) {
+      const open = [halloween, winter].filter((x) => seasonOpen(x, on(d)));
+      expect(open.length, d).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("sells its boxes only inside the window", () => {
+    const s = newState();
+    s.coins = 1000;
+    const stocking = boxesInSeries("s4")[0]!;
+    expect(openBox(s, stocking, mulberry32(1), on("2026-11-20"))).toEqual({ ok: false, reason: "locked" });
+    const r = openBox(s, stocking, mulberry32(1), on("2026-12-20"));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.characterId.startsWith("4")).toBe(true);
   });
 });

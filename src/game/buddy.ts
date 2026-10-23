@@ -23,6 +23,15 @@ export interface BuddyState {
   lastVisitDay: string | null;
   /** Index into MOMENTS of what it got up to, chosen on the first visit of a day. */
   momentIndex: number;
+  /** Spot id it is currently at, so it is where you left it. See game/room.ts. */
+  at: string | null;
+  /** Places visited, all time. Only ever increments; drives what it finds. */
+  wanders: number;
+  /** Ids of things turned up while exploring. Never removed. */
+  finds: string[];
+  /** Something tasty is out. Not hunger: an empty bowl is just an empty bowl. */
+  bowl: boolean;
+  cup: boolean;
 }
 
 /** Unlocked purely by turning up. Never taken away, never expires. */
@@ -86,7 +95,37 @@ export const MOMENTS: readonly string[] = [
 ];
 
 export function newBuddy(characterId: string, now: number): BuddyState {
-  return { characterId, since: now, visits: 0, lastVisitDay: null, momentIndex: 0 };
+  return { characterId, since: now, visits: 0, lastVisitDay: null, momentIndex: 0, at: null, wanders: 0, finds: [], bowl: false, cup: false };
+}
+
+/**
+ * Make a buddy loaded from disk safe to render.
+ *
+ * Saves written before the room existed have no `wanders`, `finds` or `at`, and the load
+ * path spreads the stored buddy in whole rather than merging it field by field — so without
+ * this, `finds.includes` throws on the first render and a kid who already had a buddy gets
+ * a blank screen they cannot get out of, because the Parent corner reset is behind that
+ * same render. A present-but-wrong field is replaced rather than trusted, for the same
+ * reason the inventory is checked on load.
+ *
+ * Returns null when there is not even a usable character id, which the caller reads as
+ * "no buddy yet" and shows the pick-one card for.
+ */
+export function normalizeBuddy(b: Partial<BuddyState> | null | undefined): BuddyState | null {
+  if (!b || typeof b.characterId !== "string" || !b.characterId) return null;
+  const num = (v: unknown, fallback: number): number => (Number.isFinite(v) ? Math.max(0, Math.floor(v as number)) : fallback);
+  return {
+    characterId: b.characterId,
+    since: num(b.since, Date.now()),
+    visits: num(b.visits, 0),
+    lastVisitDay: typeof b.lastVisitDay === "string" ? b.lastVisitDay : null,
+    momentIndex: num(b.momentIndex, 0),
+    at: typeof b.at === "string" ? b.at : null,
+    wanders: num(b.wanders, 0),
+    finds: Array.isArray(b.finds) ? b.finds.filter((x): x is string => typeof x === "string") : [],
+    bowl: b.bowl === true,
+    cup: b.cup === true,
+  };
 }
 
 /** Milestones reached so far. Derived from visits, so it can never regress. */

@@ -4,6 +4,7 @@ import { CHARACTERS, RARITIES } from "../src/data/characters";
 import { describeOdds, oddsAreValid, rollBox } from "../src/game/odds";
 import { newState, openBox } from "../src/game/state";
 import { mulberry32 } from "../src/game/rng";
+import { buyableOn } from "./helpers";
 
 describe("box odds", () => {
   it("every box's published odds sum to 100", () => {
@@ -55,12 +56,12 @@ describe("published odds match what a player actually pulls", () => {
       s.parent.dailyBoxCap = Number.MAX_SAFE_INTEGER;
       s.coins = Number.MAX_SAFE_INTEGER;
       // Every series unlocked so no roll is refused. A seasonal series does not unlock by
-      // ownership, so the simulated date has to sit inside its window too.
+      // ownership, so the date has to sit inside its own window — see buyableOn.
       for (const c of CHARACTERS) s.inventory[c.id] = 1;
       const seen: Record<string, number> = {};
       let pulls = 0;
       for (let i = 0; i < N; i++) {
-        const r = openBox(s, box, rng, new Date("2026-10-25T10:00:00"));
+        const r = openBox(s, box, rng, buyableOn(box));
         if (!r.ok) continue;
         const c = CHARACTERS.find((x) => x.id === r.characterId);
         if (c) { seen[c.rarity] = (seen[c.rarity] ?? 0) + 1; pulls++; }

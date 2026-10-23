@@ -16,14 +16,9 @@ import { mulberry32 } from "../src/game/rng";
 import { plainOnly } from "../src/net/sync";
 import { itemsValue } from "../src/game/trade";
 import { loadState, newState, openBox, ownedCount, ownedInSeries, sellSpare, sellValue, displayName, setNickname, inventoryValue, totalItems } from "../src/game/state";
+import { buyableOn } from "./helpers";
 
 const day = new Date("2026-09-10T10:00:00");
-/**
- * A date inside every season window, so a sweep over BOXES can open the seasonal baskets
- * too — their published odds and their coin sink have to hold as well. Move this if a
- * future seasonal run falls outside October.
- */
-const inSeason = new Date("2026-10-25T10:00:00");
 
 const steamer = BOXES[0]!;
 
@@ -156,7 +151,7 @@ describe("what a finish is worth", () => {
       let paid = 0;
       let back = 0;
       for (let i = 0; i < 4000; i++) {
-        const r = openBox(s, box, rng, inSeason);
+        const r = openBox(s, box, rng, buyableOn(box));
         if (!r.ok) throw new Error(`could not open ${box.name}: ${r.reason}`);
         paid += box.price;
         back += sellValue(r.item);

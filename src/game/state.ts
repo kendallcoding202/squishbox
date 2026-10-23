@@ -1,6 +1,6 @@
 import { CHARACTERS, CHARACTER_BY_ID, CORE_CHARACTERS, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonOpen, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
-import { newBuddy, recordVisit, type BuddyState } from "./buddy";
+import { newBuddy, normalizeBuddy, recordVisit, type BuddyState } from "./buddy";
 import { characterIdOf, FINISH_INFO, itemKey, parseItem, rollFinish, type Finish } from "./finishes";
 import { PITY_AT, rollBox } from "./odds";
 import type { Rng } from "./rng";
@@ -442,6 +442,7 @@ export const REWARDS: readonly Reward[] = [
   // claim is permanent, which is right for a set you finish once and then own every
   // Halloween after — it can take more than one October to get there, and it waits.
   { id: "s3-album", series: "s3", label: "Catch every spooky one", coins: 250, progress: (inv) => [ownedInSeries(inv, "s3"), charactersInSeries("s3").length] },
+  { id: "s4-album", series: "s4", label: "Catch every frosty one", coins: 250, progress: (inv) => [ownedInSeries(inv, "s4"), charactersInSeries("s4").length] },
 ];
 
 export function rewardsForSeries(id: SeriesId): Reward[] {
@@ -557,6 +558,11 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
           if (!known(key) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[key];
         }
         merged.shelf = merged.shelf.filter(known);
+        // The buddy is spread in whole above, so a save from before the room existed has no
+        // wanders, finds or position at all. normalizeBuddy fills them in; without it the
+        // first render of an existing buddy throws and the screen goes blank.
+        merged.buddy = normalizeBuddy(merged.buddy);
+        if (merged.buddy && !CHARACTER_BY_ID.has(merged.buddy.characterId)) merged.buddy = null;
         if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
         if (!Array.isArray(merged.appliedDeliveries)) merged.appliedDeliveries = [];
         latchUnlocks(merged); // saves from before the latch: bank what the collection already earns
