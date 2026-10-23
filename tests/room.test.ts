@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { newBuddy, normalizeBuddy, type BuddyState } from "../src/game/buddy";
 import {
   arrive, FINDS, findsIn, found, foundIn, GIFT_BASE, GIFT_PER_FIND, giftFor, giftReady, nextFind, openPlaces,
-  pickSpot, PLACES, placeOf, placeProgress, placeUnlocked, SPOTS, SPOT_BY_ID, spotsIn,
+  MAX_VISITORS, pickSpot, pickStable, PLACES, placeOf, placeProgress, placeUnlocked, SPOTS, SPOT_BY_ID, spotsIn,
+  visitorsFor,
 } from "../src/game/room";
 import { mulberry32 } from "../src/game/rng";
 import { loadState, newState, takeBuddyGift } from "../src/game/state";
@@ -302,5 +303,64 @@ describe("places", () => {
       const spot = giftFor(pet, `2026-11-${String(d).padStart(2, "0")}`).spot;
       expect(placeUnlocked(pet, spot.place), spot.id).toBe(true);
     }
+  });
+});
+
+describe("who else is about", () => {
+  const pool = ["mika", "theo", "ruby", "sam"];
+
+  it("always puts somebody in a place, and never a crowd", () => {
+    for (const p of PLACES) {
+      for (let d = 1; d <= 28; d++) {
+        const vs = visitorsFor(p.id, `2026-11-${String(d).padStart(2, "0")}`, pool);
+        expect(vs.length, `${p.id} day ${d}`).toBeGreaterThanOrEqual(1);
+        expect(vs.length, `${p.id} day ${d}`).toBeLessThanOrEqual(MAX_VISITORS);
+      }
+    }
+  });
+
+  it("stands them somewhere in the place they are visiting", () => {
+    for (const p of PLACES) {
+      for (const v of visitorsFor(p.id, "2026-11-10", pool)) {
+        expect(SPOT_BY_ID.get(v.spotId)?.place, v.botId).toBe(p.id);
+      }
+    }
+  });
+
+  it("never sends the same neighbour round twice at once", () => {
+    for (let d = 1; d <= 40; d++) {
+      const vs = visitorsFor("room", `2026-12-${d}`, pool);
+      expect(new Set(vs.map((v) => v.botId)).size, `day ${d}`).toBe(vs.length);
+    }
+  });
+
+  it("does not move during the day, and does change overnight", () => {
+    const a = visitorsFor("garden", "2026-11-10", pool);
+    for (let i = 0; i < 20; i++) expect(visitorsFor("garden", "2026-11-10", pool)).toEqual(a);
+    const month = new Set(
+      Array.from({ length: 28 }, (_, i) => JSON.stringify(visitorsFor("garden", `2026-11-${String(i + 1).padStart(2, "0")}`, pool))),
+    );
+    expect(month.size).toBeGreaterThan(3);
+  });
+
+  it("copes with having nobody to send", () => {
+    expect(visitorsFor("room", "2026-11-10", [])).toEqual([]);
+    expect(visitorsFor("nowhere", "2026-11-10", pool)).toEqual([]);
+  });
+
+  it("fills a place even when only one neighbour exists", () => {
+    for (let d = 1; d <= 20; d++) {
+      const vs = visitorsFor("kitchen", `2026-11-${d}`, ["mika"]);
+      expect(vs.length, `day ${d}`).toBe(1);
+      expect(vs[0]!.botId).toBe("mika");
+    }
+  });
+
+  it("picks stably out of a list, and not at all out of an empty one", () => {
+    const items = ["a", "b", "c", "d"];
+    const first = pickStable(items, "seed");
+    for (let i = 0; i < 20; i++) expect(pickStable(items, "seed")).toBe(first);
+    expect(new Set(["s1", "s2", "s3", "s4", "s5", "s6"].map((x) => pickStable(items, x))).size).toBeGreaterThan(1);
+    expect(pickStable([], "seed")).toBeNull();
   });
 });

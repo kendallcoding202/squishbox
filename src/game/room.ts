@@ -296,8 +296,8 @@ export interface Gift {
 export const GIFT_BASE = 12;
 export const GIFT_PER_FIND = 2;
 
-/** FNV-1a. Only used to pick a stable flavour spot from a day key. */
-function hashOf(text: string): number {
+/** FNV-1a. Used to derive things from a day key that must not move during the day. */
+export function stableHash(text: string): number {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);
@@ -316,11 +316,60 @@ function hashOf(text: string): number {
  */
 export function giftFor(b: BuddyState, dayKey: string): Gift {
   const reachable = openPlaces(b).flatMap((p) => spotsIn(p.id));
-  const spot = reachable[hashOf(dayKey + b.characterId) % reachable.length] as Spot;
+  const spot = reachable[stableHash(dayKey + b.characterId) % reachable.length] as Spot;
   return { coins: GIFT_BASE + b.finds.length * GIFT_PER_FIND, spot };
 }
 
 /** Is there something waiting? Nothing accrues while away: at worst there is nothing yet. */
 export function giftReady(b: BuddyState, dayKey: string): boolean {
   return b.lastGiftDay !== dayKey;
+}
+
+// ---- who else is about ----
+
+/**
+ * Other people's dumplings, round for the day.
+ *
+ * The world was a world with exactly one inhabitant in it, which is a lonely sort of world.
+ * These are real dumplings belonging to the neighbours a kid already trades with, so the
+ * one in the garden today is genuinely one of Mika's and may well turn up in a swap later.
+ *
+ * Derived from the day, which buys three things: it is stable across renders and reloads,
+ * it costs nothing in the save file (so there is no migration and nothing to corrupt), and
+ * it changes overnight, which is a small reason to look in tomorrow.
+ *
+ * Deliberately NOT a trade prompt. A visitor is scenery: it potters about, it says hello if
+ * you tap it, and that is all. Trading has a tab, a parent switch and an escrow engine, and
+ * none of that belongs in a room a six-year-old is watching a pet in.
+ *
+ * `pool` is the neighbours currently available, passed in rather than read from game/bots.ts
+ * — bots.ts reaches game/state.ts, which imports this file, and the cycle would be real.
+ */
+export interface VisitorPlan {
+  botId: string;
+  /** Where it starts. It ambles from there on its own. */
+  spotId: string;
+}
+
+/** At least one, never more than two: enough to inhabit a place, few enough to stay calm. */
+export const MAX_VISITORS = 2;
+
+export function visitorsFor(placeId: string, dayKey: string, pool: readonly string[]): VisitorPlan[] {
+  const spots = spotsIn(placeId);
+  if (pool.length === 0 || spots.length === 0) return [];
+  const want = Math.min(1 + (stableHash(`${dayKey}|${placeId}|n`) % MAX_VISITORS), pool.length, spots.length);
+  const out: VisitorPlan[] = [];
+  for (let i = 0; out.length < want && i < pool.length * 3; i++) {
+    const botId = pool[stableHash(`${dayKey}|${placeId}|who${i}`) % pool.length] as string;
+    if (out.some((v) => v.botId === botId)) continue; // one dumpling each, not a crowd of clones
+    const spotId = (spots[stableHash(`${dayKey}|${placeId}|at${i}`) % spots.length] as Spot).id;
+    out.push({ botId, spotId });
+  }
+  return out;
+}
+
+/** A stable choice out of a list, for picking which of a neighbour's dumplings came round. */
+export function pickStable<T>(items: readonly T[], seed: string): T | null {
+  if (items.length === 0) return null;
+  return items[stableHash(seed) % items.length] as T;
 }

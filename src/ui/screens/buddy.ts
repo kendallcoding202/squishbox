@@ -1,11 +1,13 @@
 import { CHARACTER_BY_ID, type Character } from "../../data/characters";
+import { BOTS, BOT_BY_ID, type Bot } from "../../game/bots";
+import { characterIdOf, finishOf } from "../../game/finishes";
 import { decorations, hasOwnVoice, momentText, nextMilestone, reached, tricks, type BuddyState, type Milestone } from "../../game/buddy";
 import {
   arrive, found, giftFor, giftReady, HOME_PLACE, nextFind, openPlaces, pickSpot, PLACES, placeOf, placeProgress,
-  placeUnlocked, SPOT_BY_ID, spotsIn, type Find, type Lane, type Spot,
+  pickStable, placeUnlocked, SPOT_BY_ID, spotsIn, visitorsFor, type Find, type Lane, type Spot,
 } from "../../game/room";
 import { systemRng } from "../../game/rng";
-import { dayKey, displayName, effectiveNow, ownedCount, takeBuddyGift } from "../../game/state";
+import { dayKey, displayName, effectiveNow, ownedCount, seriesUnlocked, takeBuddyGift, type SaveState } from "../../game/state";
 import { confetti, h, hearts, onTap, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic, squeak, success } from "../sound";
@@ -40,11 +42,15 @@ import { store } from "../store";
 let acting: { cls: string; kind: "ambient" | "trick"; timer: number; actor: HTMLElement } | null = null;
 /** The wander loop's pending step. Cleared whenever the screen is rebuilt or left. */
 let timer = 0;
+/** One pending amble per visitor. Nothing in this room may outlive the screen that made it. */
+let visitorTimers: number[] = [];
 
 /** Stop the room. Called when leaving the tab, hiding the app, or rebuilding the screen. */
 export function pauseBuddyLife(): void {
   clearTimeout(timer);
   timer = 0;
+  for (const t of visitorTimers) clearTimeout(t);
+  visitorTimers = [];
 }
 
 function play(actor: HTMLElement, cls: string, ms: number, kind: "ambient" | "trick", then?: () => void): void {
@@ -75,6 +81,15 @@ function interrupt(): boolean {
 function headOf(el: HTMLElement): [number, number] {
   const r = el.getBoundingClientRect();
   return [r.left + r.width / 2, r.top + r.height * 0.3];
+}
+
+/**
+ * Neighbours who could send a dumpling round. The same rule the Trade tab uses, so the
+ * seasonal ones only turn up while their series is open — Holly does not amble through the
+ * garden in July.
+ */
+function visitingBots(s: SaveState): Bot[] {
+  return BOTS.filter((bot) => !bot.requiresSeries || seriesUnlocked(s, bot.requiresSeries));
 }
 
 /** A squeak keyed off the character, so each dumpling sounds like itself. */
@@ -117,6 +132,7 @@ export function renderBuddy(): HTMLElement {
   // so bind both with an explicit type.
   const bud: BuddyState = b;
   const chr: Character = c;
+  const today = effectiveNow(s, new Date());
 
   const name = displayName(s, c.id);
   const art = dumplingEl(c, 132, { idle: true, fullSquish: true });
@@ -154,7 +170,30 @@ export function renderBuddy(): HTMLElement {
   // The shelf lives at home: wherever it finds things, they end up on the shelf in its room.
   const shelf = h("div", { class: "room-shelf" }, ...shelfItems);
 
-  const floor = h("div", { class: "room-floor" }, ...props.map((pr) => pr.el), stage);
+  // ---- who else is about ----
+  // Real dumplings belonging to the neighbours a kid already trades with. Scenery, not a
+  // trade prompt: they potter, they say hello, and that is all. See game/room.ts.
+  const visitors = visitorsFor(here.id, dayKey(today), visitingBots(s).map((bot) => bot.id))
+    .map((plan) => {
+      const bot = BOT_BY_ID.get(plan.botId);
+      const inv = bot ? store.botInventory(bot.id) : {};
+      const itemKey = pickStable(Object.keys(inv).filter((k) => (inv[k] ?? 0) > 0), `${dayKey(today)}|${plan.botId}`);
+      const guest = itemKey ? CHARACTER_BY_ID.get(characterIdOf(itemKey)) : null;
+      if (!bot || !guest || !itemKey) return null;
+      const spot = SPOT_BY_ID.get(plan.spotId);
+      if (!spot) return null;
+      const art = dumplingEl(guest, 68, { idle: true, finish: finishOf(itemKey), decorative: true });
+      const el = h("div", {
+        class: "visitor" + (spot.lane === "back" ? " far" : ""),
+        style: `left:${spot.x}%`,
+        role: "button", tabindex: "0",
+        "aria-label": `${bot.name}'s ${guest.name}, visiting. Tap to say hello.`,
+      }, art);
+      return { bot, guest, el, spot };
+    })
+    .filter(Boolean) as { bot: Bot; guest: Character; el: HTMLElement; spot: Spot }[];
+
+  const floor = h("div", { class: "room-floor" }, ...props.map((pr) => pr.el), ...visitors.map((v) => v.el), stage);
   const room = h("div", { class: `room place-${here.id}` },
     h("div", { class: "room-wall" },
       here.id === "room"
@@ -356,7 +395,6 @@ export function renderBuddy(): HTMLElement {
   // ---- what it brought home ----
   // The pull that gets a kid into the room at all: something is waiting, and it is a gift
   // rather than a debt. Nothing builds up while they are away; at worst there is not one yet.
-  const today = effectiveNow(s, new Date());
   const giftCard = ((): HTMLElement | null => {
     if (!giftReady(bud, dayKey(today))) return null;
     const gift = giftFor(bud, dayKey(today));
@@ -387,6 +425,36 @@ export function renderBuddy(): HTMLElement {
   const trickList = tricks(bud);
   const next = nextMilestone(bud);
   const done = reached(bud);
+
+  // Visitors amble on their own clock, slower and simpler than the buddy: they stroll and
+  // idle, they do not perform the arrival activities. Two or three things doing the full
+  // routine at once turns a room you sit and watch into a busy one.
+  for (const v of visitors) {
+    const amble = (): void => {
+      const pool = spots.filter((sp) => sp.id !== v.spot.id);
+      const next = pool[Math.floor(systemRng() * pool.length)] as Spot;
+      const ms = Math.round(700 + Math.abs(next.x - v.spot.x) * 20);
+      v.el.style.transition = `left ${ms}ms ease-in-out, bottom ${ms}ms ease-in-out, transform ${ms}ms ease-in-out`;
+      v.el.style.left = `${next.x}%`;
+      v.el.classList.toggle("far", next.lane === "back");
+      v.el.classList.add("walking");
+      v.spot = next;
+      visitorTimers.push(window.setTimeout(() => {
+        v.el.classList.remove("walking");
+        visitorTimers.push(window.setTimeout(amble, 3000 + Math.floor(systemRng() * 6000)));
+      }, ms));
+    };
+    onTap(v.el, () => {
+      const [hx, hy] = headOf(v.el);
+      hearts(hx, hy, 3);
+      squeak(voiceOf(v.guest.id), v.guest.rarity);
+      haptic("light");
+      v.el.classList.add("greet");
+      setTimeout(() => v.el.classList.remove("greet"), 700);
+      tell(`This is ${v.bot.name}'s ${displayName(s, v.guest.id)}, round for the day.`);
+    });
+    visitorTimers.push(window.setTimeout(amble, 2000 + Math.floor(systemRng() * 4000)));
+  }
 
   // Start where it was left, then let it get on with it.
   const start = (bud.at && SPOT_BY_ID.get(bud.at)) || (spots[0] as Spot);
