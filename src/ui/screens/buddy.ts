@@ -1,6 +1,9 @@
 import { CHARACTER_BY_ID, type Character } from "../../data/characters";
 import { decorations, hasOwnVoice, momentText, nextMilestone, reached, tricks, type BuddyState, type Milestone } from "../../game/buddy";
-import { arrive, found, giftFor, giftReady, nextFind, pickSpot, SPOTS, SPOT_BY_ID, type Find, type Spot } from "../../game/room";
+import {
+  arrive, found, giftFor, giftReady, HOME_PLACE, nextFind, openPlaces, pickSpot, PLACES, placeOf, placeProgress,
+  placeUnlocked, SPOT_BY_ID, spotsIn, type Find, type Lane, type Spot,
+} from "../../game/room";
 import { systemRng } from "../../game/rng";
 import { dayKey, displayName, effectiveNow, ownedCount, takeBuddyGift } from "../../game/state";
 import { confetti, h, hearts, onTap, toast } from "../dom";
@@ -120,20 +123,27 @@ export function renderBuddy(): HTMLElement {
   const actor = h("div", { class: "buddy-actor" }, art);
   const stage = h("div", { class: "buddy-stage" }, actor);
 
-  // ---- the room, positioned from SPOTS so the furniture and the engine cannot drift apart ----
-  const at = (id: string): Spot => SPOT_BY_ID.get(id) as Spot;
-  const place = (spot: Spot): string => `left:${spot.propX ?? spot.x}%`;
+  // ---- the scene, drawn from the place the buddy is in ----
+  // Every prop is positioned from its own spot, so the furniture and the engine cannot drift
+  // apart, and adding a place is a matter of adding spots rather than writing a screen.
+  const here = placeOf(bud);
+  const spots = spotsIn(here.id);
 
-  const bowl = h("div", { class: "prop bowl", style: place(at("bowl")), role: "button", tabindex: "0",
-    "aria-label": "Bowl. Tap to put some food out." }, bud.bowl ? "\u{1F95F}" : "\u{1F963}");
-  const cup = h("div", { class: "prop cup", style: place(at("cup")), role: "button", tabindex: "0",
-    "aria-label": "Cup. Tap to pour a drink." }, "\u{1F375}");
-  const cushion = h("div", { class: "prop cushion", style: place(at("cushion")), role: "button", tabindex: "0",
-    "aria-label": `Cushion. Tap to send ${name} over.` });
-  const plant = h("div", { class: "prop plant back", style: place(at("plant")), role: "button", tabindex: "0",
-    "aria-label": `Plant. Tap to send ${name} over.` }, "\u{1FAB4}");
-  const toys = h("div", { class: "prop toys back", style: place(at("toys")), role: "button", tabindex: "0",
-    "aria-label": `Toy box. Tap to send ${name} over.` }, "\u{1F9F8}");
+  const props = spots
+    .filter((spot) => spot.seat || spot.glyph)
+    .map((spot) => {
+      const seat = spot.seat === true;
+      const el = h("div", {
+        class: `prop ${spot.id}${seat ? " seat" : ""}${spot.lane === "back" ? " back" : ""}`,
+        style: `left:${spot.propX ?? spot.x}%`,
+        role: "button", tabindex: "0",
+        "aria-label": spot.fillable
+          ? `${spot.fillable === "bowl" ? "Bowl. Tap to put some food out." : "Cup. Tap to pour a drink."}`
+          : `${spot.id}. Tap to send ${name} over.`,
+      }, seat ? null : spot.glyph);
+      return { spot, el };
+    });
+  const propEl = (id: string): HTMLElement | null => props.find((pr) => pr.spot.id === id)?.el ?? null;
 
   const decor = decorations(bud);
   const finds = found(bud);
@@ -141,13 +151,16 @@ export function renderBuddy(): HTMLElement {
     ...decor.map((m) => h("span", { class: "decor", title: m.label }, m.decor ?? "")),
     ...finds.map((f) => h("span", { class: "decor", title: f.label }, f.glyph)),
   ];
+  // The shelf lives at home: wherever it finds things, they end up on the shelf in its room.
   const shelf = h("div", { class: "room-shelf" }, ...shelfItems);
 
-  const floor = h("div", { class: "room-floor" }, plant, toys, cushion, bowl, cup, stage);
-  const room = h("div", { class: "room" },
+  const floor = h("div", { class: "room-floor" }, ...props.map((pr) => pr.el), stage);
+  const room = h("div", { class: `room place-${here.id}` },
     h("div", { class: "room-wall" },
-      h("div", { class: "window", style: `left:${at("window").x}%` }, h("i", { class: "sun" }), h("i", { class: "cloud" })),
-      shelfItems.length ? shelf : null,
+      here.id === "room"
+        ? h("div", { class: "window", style: `left:${(SPOT_BY_ID.get("window") as Spot).x}%` }, h("i", { class: "sun" }), h("i", { class: "cloud" }))
+        : null,
+      here.id === "room" && shelfItems.length ? shelf : null,
     ),
     floor,
   );
@@ -178,9 +191,12 @@ export function renderBuddy(): HTMLElement {
     // Whether it is about to have a proper meal has to be read before arrive(), which is
     // what empties the bowl. Without this, filling the bowl and the buddy finding it empty
     // look exactly the same, and putting food out stops meaning anything.
-    const helpingItself = (spot.id === "bowl" && bud.bowl) || (spot.id === "cup" && bud.cup);
+    const helpingItself = (spot.fillable === "bowl" && bud.bowl) || (spot.fillable === "cup" && bud.cup);
     const find = arrive(bud, spot.id);
-    if (spot.id === "bowl") bowl.textContent = bud.bowl ? "\u{1F95F}" : "\u{1F963}";
+    if (spot.fillable === "bowl") {
+      const el = propEl(spot.id);
+      if (el) el.textContent = bud.bowl ? "\u{1F95F}" : spot.glyph;
+    }
     store.persist(); // never update(): see the note at the top of this file
     tell(helpingItself ? `${name} is tucking in. Thank you!` : spotLine(spot));
     play(actor, `act-${spot.act}`, spot.actMs, "ambient", () => {
@@ -194,10 +210,16 @@ export function renderBuddy(): HTMLElement {
         hearts(x, y, 6);
         coin();
         haptic("success");
-        // The shelf is only in the room once there is something to put on it, so the very
-        // first find has to hang it as well as fill it.
-        if (!shelf.isConnected) room.querySelector(".room-wall")?.appendChild(shelf);
-        shelf.appendChild(h("span", { class: "decor pop", title: find.label }, find.glyph));
+        // The shelf hangs at home, so only touch it when that is where we are — a find made
+        // in the garden used to nail the shelf to the garden wall. Away from home the find
+        // still lands in state and shows on the list below; it is on the shelf next time
+        // the kid comes back in.
+        if (here.id === HOME_PLACE.id) {
+          // Only in the room once there is something to put on it, so the very first find
+          // has to hang the shelf as well as fill it.
+          if (!shelf.isConnected) room.querySelector(".room-wall")?.appendChild(shelf);
+          shelf.appendChild(h("span", { class: "decor pop", title: find.label }, find.glyph));
+        }
         refreshFinds();
         tell(`${name} found ${find.label}!`);
         toast(`${name} found ${find.label}`);
@@ -221,30 +243,42 @@ export function renderBuddy(): HTMLElement {
     moveTo(spot, () => settle(spot));
   }
 
-  onTap(cushion, () => send(at("cushion")));
-  onTap(plant, () => send(at("plant")));
-  onTap(toys, () => send(at("toys")));
+  /**
+   * The bowl and the cup are FILLED rather than fired. The buddy comes over in its own time,
+   * because pickSpot weights a full bowl heavily — that is the feeding loop, and the whole
+   * difference between looking after something and pressing Feed. Everything else you tap
+   * is a place to send it.
+   */
+  for (const { spot, el } of props) {
+    if (!spot.fillable) {
+      onTap(el, () => send(spot));
+      continue;
+    }
+    const kind = spot.fillable;
+    onTap(el, () => {
+      if (bud[kind]) { tell(`There is already something there for ${name}.`); return; }
+      bud[kind] = true;
+      store.persist();
+      if (kind === "bowl") el.textContent = "\u{1F95F}";
+      el.classList.add("pop");
+      setTimeout(() => el.classList.remove("pop"), 400);
+      haptic("light");
+      tell(kind === "bowl" ? `You put some food out. ${name} will be over.` : `You topped up the cup. ${name} will be over.`);
+    });
+  }
 
-  // Bowl and cup are filled rather than fired. The buddy comes over in its own time,
-  // because pickSpot weights a full bowl heavily — that is the feeding loop, and it is the
-  // difference between looking after something and pressing Feed.
-  onTap(bowl, () => {
-    if (bud.bowl) { tell(`There is already something in the bowl for ${name}.`); return; }
-    bud.bowl = true;
-    store.persist();
-    bowl.textContent = "\u{1F95F}";
-    bowl.classList.add("pop");
-    setTimeout(() => bowl.classList.remove("pop"), 400);
-    haptic("light");
-    tell(`You put some food out. ${name} will be over.`);
-  });
-  onTap(cup, () => {
-    bud.cup = true;
-    store.persist();
-    cup.classList.add("pop");
-    setTimeout(() => cup.classList.remove("pop"), 400);
-    haptic("light");
-    tell(`You topped up the cup. ${name} will be over.`);
+  // Tapping bare floor sends it to the nearest spot in whichever lane was tapped, so places
+  // with nothing to stand on — the windowsill — are still somewhere a kid can point at.
+  floor.addEventListener("pointerup", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".prop") || target.closest(".buddy-stage")) return;
+    const box = floor.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * 100;
+    const lane: Lane = e.clientY - box.top < box.height * 0.45 ? "back" : "front";
+    const inLane = spots.filter((sp) => sp.lane === lane);
+    const pool = inLane.length ? inLane : spots;
+    const nearest = pool.reduce((best, sp) => (Math.abs(sp.x - x) < Math.abs(best.x - x) ? sp : best), pool[0] as Spot);
+    send(nearest);
   });
 
   // Tap the buddy itself: it stops what it was doing and says hello. Squishing still works —
@@ -286,12 +320,38 @@ export function renderBuddy(): HTMLElement {
     findLine.textContent = all.length
       ? all.map((f) => `${f.glyph} ${f.label}`).join(" · ")
       : `Nothing yet. ${name} turns things up while exploring.`;
-    const nf = nextFind(bud);
+    const nf = nextFind(bud, here.id);
     findNext.textContent = nf
-      ? `Something else out there, about ${nf.toGo} more ${nf.toGo === 1 ? "wander" : "wanders"} away.`
-      : `${name} has found everything in this room.`;
+      ? `Something else to find ${here.id === "room" ? "in here" : `in ${here.name.toLowerCase()}`}, about ${nf.toGo} more ${nf.toGo === 1 ? "wander" : "wanders"} away.`
+      : `${name} has found everything ${here.id === "room" ? "in this room" : `in ${here.name.toLowerCase()}`}.`;
   }
   refreshFinds();
+
+  // ---- where to go ----
+  // Tapping a place takes the buddy there; the scene always shows wherever the buddy is, so
+  // there is never a view and a buddy in two different rooms to reconcile.
+  const placeChips = h("div", { class: "chips", style: "padding-top:0;margin-bottom:8px" },
+    ...PLACES.map((p) => {
+      const open = placeUnlocked(bud, p.id);
+      const current = open && p.id === here.id;
+      const chip = h("button", {
+        class: "chip" + (current ? " on" : ""),
+        "aria-current": current ? "true" : null,
+      }, `${open ? p.icon : "\u{1F512}"} ${p.name}`);
+      onTap(chip, () => {
+        if (!open) {
+          const [have, need] = placeProgress(bud, p.id);
+          toast(`${p.teaser} (${have} of ${need})`);
+          return;
+        }
+        if (current) return;
+        haptic("light");
+        store.update((st) => { if (st.buddy) st.buddy.at = (spotsIn(p.id)[0] as Spot).id; });
+        toast(`${name} trots off to ${p.name.toLowerCase()}.`);
+      });
+      return chip;
+    }),
+  );
 
   // ---- what it brought home ----
   // The pull that gets a kid into the room at all: something is waiting, and it is a gift
@@ -329,7 +389,7 @@ export function renderBuddy(): HTMLElement {
   const done = reached(bud);
 
   // Start where it was left, then let it get on with it.
-  const start = (bud.at && SPOT_BY_ID.get(bud.at)) || at("cushion");
+  const start = (bud.at && SPOT_BY_ID.get(bud.at)) || (spots[0] as Spot);
   stage.style.left = `${start.x}%`;
   stage.classList.toggle("far", start.lane === "back");
   timer = window.setTimeout(wander, 2800); // long enough to read what it got up to
@@ -340,10 +400,14 @@ export function renderBuddy(): HTMLElement {
       h("span", { class: "pill" }, `${done.length + finds.length} collected`),
     ),
     giftCard,
+    placeChips,
+    h("p", { class: "muted small", style: "margin:-4px 0 8px" }, here.blurb),
     says,
     room,
     h("p", { class: "muted small", style: "margin-top:10px;text-align:center" },
-      `Tap the bowl or the cup to put something out. Tap the cushion, the plant or the toy box to send ${name} over.`),
+      spots.some((sp) => sp.fillable)
+        ? `Tap the bowl or the cup to put something out. Tap anywhere else to send ${name} over.`
+        : `Tap anywhere in ${here.name.toLowerCase()} to send ${name} over.`),
     trickList.length
       ? h("div", { style: "margin-top:16px" },
           h("h2", null, "Tricks"),

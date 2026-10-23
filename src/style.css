@@ -290,10 +290,40 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .prop.back { bottom: 100px; font-size: 27px; z-index: 0; }
 .prop.pop { animation: prop-pop 0.4s ease-out; }
 @keyframes prop-pop { 0% { transform: translateX(-50%) scale(1); } 45% { transform: translateX(-50%) scale(1.35); } 100% { transform: translateX(-50%) scale(1); } }
-/* A round rug the buddy sits on, so the middle of the room reads as a place. */
-.prop.cushion { bottom: 8px; width: 170px; height: 42px; border-radius: 50%;
+/* Something to sit on in the middle of each place, so the centre reads as somewhere to be
+   rather than bare ground. Drawn rather than a glyph, because a rug has to be rug-shaped. */
+.prop.seat { bottom: 8px; width: 170px; height: 42px; border-radius: 50%;
   background: radial-gradient(ellipse at 50% 50%, #f3b6cd 0 40%, #e58cae 40% 70%, #d97ba1 70%);
   opacity: 0.9; box-shadow: 0 3px 8px rgba(90,60,20,0.15); z-index: 1; }
+.place-garden .prop.seat { background: radial-gradient(ellipse at 50% 50%, #a8d98a 0 40%, #86c267 40% 70%, #6fae52 70%); }
+.place-kitchen .prop.seat { background: radial-gradient(ellipse at 50% 50%, #e8d9b8 0 40%, #d6c096 40% 70%, #c2a97c 70%); }
+
+/* Each place is the same scene with a different wall and floor. Adding one is a pair of
+   gradients, which is the whole reason a new place is content rather than code. */
+.place-garden .room-wall { background: linear-gradient(180deg, #bfe4f5 0%, #ddf1fa 70%, #cfe8c4 100%); }
+/* A sun and a couple of clouds, so the sky is a sky rather than a blue band. The room fills
+   the same space with its window and its shelf. */
+.place-garden .room-wall::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle 17px at 80% 26px, #ffd23f 0 100%, transparent 100%),
+              radial-gradient(ellipse 30px 9px at 24% 44px, rgba(255,255,255,0.95) 0 100%, transparent 100%),
+              radial-gradient(ellipse 20px 7px at 36% 62px, rgba(255,255,255,0.8) 0 100%, transparent 100%),
+              radial-gradient(ellipse 24px 8px at 62% 34px, rgba(255,255,255,0.7) 0 100%, transparent 100%); }
+.place-garden .room-wall::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+  background: radial-gradient(ellipse 60px 22px at 14% 100%, #7fae63 0 70%, transparent 70%),
+              radial-gradient(ellipse 80px 26px at 46% 100%, #8cbb6e 0 70%, transparent 70%),
+              radial-gradient(ellipse 70px 20px at 82% 100%, #7fae63 0 70%, transparent 70%); }
+.place-garden .room-floor { background: linear-gradient(180deg, #8cbb6e 0 52px, #a3cf84 52px, #8fbd6c 100%); }
+.place-garden .room-floor::before { background: linear-gradient(180deg, #6f9c55, #8cbb6e); }
+/* Tiled wall. The grout has to be darker than the tile or it vanishes, which is exactly
+   what a white-on-white first attempt did. Cool tiles against the warm floor so the two
+   read as different surfaces. */
+.place-kitchen .room-wall {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120, 150, 160, 0.33) 0 2px, transparent 2px 36px),
+    repeating-linear-gradient(90deg, rgba(120, 150, 160, 0.33) 0 2px, transparent 2px 36px),
+    linear-gradient(180deg, #dceaee, #c3d8de); }
+.place-kitchen .room-floor { background: linear-gradient(180deg, #c9b795 0 52px, #e2d1ad 52px, #cbb892 100%); }
+.place-kitchen .room-floor::before { background: linear-gradient(180deg, #9db2b8, #c0a883); }
 /* The buddy is positioned by `left` and lifted into the back lane by `.far`. margin-left
    does the centring rather than a transform, which `.far` needs for the scale and the
    act-* animations need for everything else. */
