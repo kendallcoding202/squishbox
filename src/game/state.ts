@@ -1,6 +1,7 @@
 import { CHARACTERS, CHARACTER_BY_ID, CORE_CHARACTERS, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonOpen, type Rarity, type SeriesId } from "../data/characters";
 import type { Box } from "../data/boxes";
 import { newBuddy, normalizeBuddy, recordVisit, type BuddyState } from "./buddy";
+import { giftFor, giftReady } from "./room";
 import { characterIdOf, FINISH_INFO, itemKey, parseItem, rollFinish, type Finish } from "./finishes";
 import { PITY_AT, rollBox } from "./odds";
 import type { Rng } from "./rng";
@@ -333,6 +334,28 @@ export function claimDaily(state: SaveState, today: Date): number {
   state.lastDailyClaim = dayKey(now);
   log(state, "daily", `Claimed ${amount} coins (day ${state.streak} streak)`, now.getTime());
   return amount;
+}
+
+/**
+ * Take what the buddy brought home. Once per calendar day, returns the coins or 0.
+ *
+ * Note effectiveNow and markClockSeen, unlike the seasonal windows, which read the plain
+ * wall clock. This one pays out coins, so it has to run on the forward-only clock or
+ * winding the device forward turns the buddy into a coin printer. A season gives nothing
+ * away and so has nothing to farm; this does.
+ */
+export function takeBuddyGift(state: SaveState, today: Date): number {
+  const now = effectiveNow(state, today);
+  const key = dayKey(now);
+  if (!state.buddy || !giftReady(state.buddy, key)) return 0;
+  markClockSeen(state, now);
+  const gift = giftFor(state.buddy, key);
+  state.buddy.lastGiftDay = key;
+  state.coins += gift.coins;
+  state.stats.coinsEarned += gift.coins;
+  const who = CHARACTER_BY_ID.get(state.buddy.characterId)?.name ?? "Your buddy";
+  log(state, "buddy", `${who} brought home ${gift.coins} coins from exploring`, now.getTime());
+  return gift.coins;
 }
 
 export function boxesOpenedToday(state: SaveState, today: Date): number {

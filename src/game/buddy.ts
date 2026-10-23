@@ -32,6 +32,8 @@ export interface BuddyState {
   /** Something tasty is out. Not hunger: an empty bowl is just an empty bowl. */
   bowl: boolean;
   cup: boolean;
+  /** dayKey the exploring gift was last collected, so it comes once a day. See game/room.ts. */
+  lastGiftDay: string | null;
 }
 
 /** Unlocked purely by turning up. Never taken away, never expires. */
@@ -95,7 +97,7 @@ export const MOMENTS: readonly string[] = [
 ];
 
 export function newBuddy(characterId: string, now: number): BuddyState {
-  return { characterId, since: now, visits: 0, lastVisitDay: null, momentIndex: 0, at: null, wanders: 0, finds: [], bowl: false, cup: false };
+  return { characterId, since: now, visits: 0, lastVisitDay: null, momentIndex: 0, at: null, wanders: 0, finds: [], bowl: false, cup: false, lastGiftDay: null };
 }
 
 /**
@@ -125,6 +127,7 @@ export function normalizeBuddy(b: Partial<BuddyState> | null | undefined): Buddy
     finds: Array.isArray(b.finds) ? b.finds.filter((x): x is string => typeof x === "string") : [],
     bowl: b.bowl === true,
     cup: b.cup === true,
+    lastGiftDay: typeof b.lastGiftDay === "string" ? b.lastGiftDay : null,
   };
 }
 

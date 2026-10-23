@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { newBuddy, normalizeBuddy, type BuddyState } from "../src/game/buddy";
-import { arrive, FINDS, found, nextFind, pickSpot, SPOTS, SPOT_BY_ID } from "../src/game/room";
+import { arrive, FINDS, found, GIFT_BASE, GIFT_PER_FIND, giftFor, giftReady, nextFind, pickSpot, SPOTS, SPOT_BY_ID } from "../src/game/room";
 import { mulberry32 } from "../src/game/rng";
-import { loadState } from "../src/game/state";
+import { loadState, newState, takeBuddyGift } from "../src/game/state";
 
 const b = (over: Partial<BuddyState> = {}): BuddyState => ({ ...newBuddy("c01", 0), ...over });
 
@@ -144,5 +144,78 @@ describe("buddies saved before the room existed", () => {
   it("drops a buddy whose dumpling this build does not have", () => {
     const save = { version: 1, inventory: { c01: 1 }, buddy: { ...old, characterId: "zz99" } };
     expect(loadState({ getItem: () => JSON.stringify(save) }).buddy).toBeNull();
+  });
+});
+
+describe("what the buddy brings home", () => {
+  const day = new Date("2026-11-10T09:00:00");
+
+  it("is waiting once a day and not again until tomorrow", () => {
+    const s = newState();
+    s.buddy = b();
+    expect(takeBuddyGift(s, day)).toBeGreaterThan(0);
+    expect(takeBuddyGift(s, day)).toBe(0);
+    expect(takeBuddyGift(s, new Date("2026-11-10T23:30:00"))).toBe(0); // same day, later
+    expect(takeBuddyGift(s, new Date("2026-11-11T07:00:00"))).toBeGreaterThan(0);
+  });
+
+  it("cannot be farmed by winding the clock back", () => {
+    // It pays out coins, so unlike a season it runs on the forward-only clock.
+    const s = newState();
+    s.buddy = b();
+    const first = takeBuddyGift(s, new Date("2026-11-10T09:00:00"));
+    expect(first).toBeGreaterThan(0);
+    for (const back of ["2026-11-09", "2026-10-01", "2025-01-01"]) {
+      expect(takeBuddyGift(s, new Date(`${back}T09:00:00`)), back).toBe(0);
+    }
+    expect(s.coins).toBe(newState().coins + first);
+  });
+
+  it("pays a flat amount that only exploring moves, never a random one", () => {
+    // A variable payout is the one reinforcement schedule that really is a slot machine,
+    // and this app is in the Kids category. Same day, same buddy, same number, every time.
+    const fresh = b();
+    const explored = b({ finds: FINDS.slice(0, 5).map((f) => f.id) });
+    expect(giftFor(fresh, "2026-11-10").coins).toBe(GIFT_BASE);
+    expect(giftFor(explored, "2026-11-10").coins).toBe(GIFT_BASE + 5 * GIFT_PER_FIND);
+    for (let i = 0; i < 20; i++) expect(giftFor(fresh, "2026-11-10").coins).toBe(GIFT_BASE);
+  });
+
+  it("stays the same all day so it cannot be rerolled by reloading", () => {
+    const pet = b();
+    const once = giftFor(pet, "2026-11-10");
+    for (let i = 0; i < 50; i++) expect(giftFor(pet, "2026-11-10").spot.id).toBe(once.spot.id);
+    // but the flavour does move from day to day
+    const spots = new Set(["11", "12", "13", "14", "15", "16", "17", "18"].map((d) => giftFor(pet, `2026-11-${d}`).spot.id));
+    expect(spots.size).toBeGreaterThan(1);
+  });
+
+  it("never hands over a dumpling, which would dodge the parent's box cap", () => {
+    const s = newState();
+    s.buddy = b();
+    s.parent.dailyBoxCap = 1;
+    const before = JSON.stringify(s.inventory);
+    takeBuddyGift(s, day);
+    expect(JSON.stringify(s.inventory)).toBe(before);
+  });
+
+  it("gives nothing at all when there is no buddy to send", () => {
+    const s = newState();
+    s.buddy = null;
+    expect(takeBuddyGift(s, day)).toBe(0);
+  });
+
+  it("does not accrue while the app is closed: a week away is still one gift", () => {
+    const s = newState();
+    s.buddy = b();
+    const got = takeBuddyGift(s, new Date("2026-11-20T09:00:00"));
+    expect(got).toBe(GIFT_BASE);
+    expect(takeBuddyGift(s, new Date("2026-11-20T18:00:00"))).toBe(0);
+  });
+
+  it("survives an old save that has never heard of it", () => {
+    const n = normalizeBuddy({ characterId: "c01", visits: 3 })!;
+    expect(n.lastGiftDay).toBeNull();
+    expect(giftReady(n, "2026-11-10")).toBe(true);
   });
 });

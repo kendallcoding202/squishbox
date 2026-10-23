@@ -1,11 +1,12 @@
 import { boxesInSeries, BOXES, type Box } from "../../data/boxes";
 import { CHARACTERS, CHARACTER_BY_ID, CORE_CHARACTERS, RARITY_INFO, SERIES, SERIES_BY_ID, charactersInSeries, seasonDaysLeft, seasonOf, type Character, type SeriesId } from "../../data/characters";
 import { momentText, nextMilestone, reached } from "../../game/buddy";
+import { giftReady } from "../../game/room";
 import { characterIdOf, describeFinishOdds, FINISH_INFO, finishOf, type Finish } from "../../game/finishes";
 import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
-  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, displayName, luckyNext, openBox, ownedCoreCount, ownedCount, ownedInSeries,
+  boxesOpenedToday, canClaimDaily, claimDaily, claimReward, dayKey, displayName, effectiveNow, luckyNext, openBox, ownedCoreCount, ownedCount, ownedInSeries,
   markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
 import { announce, confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
@@ -344,6 +345,7 @@ function buddySection(): HTMLElement | null {
 
   const c = CHARACTER_BY_ID.get(b.characterId);
   if (!c) return null;
+  const today = effectiveNow(s, new Date());
   const next = nextMilestone(b);
   const done = reached(b);
   const art = dumplingEl(c, 96, { idle: true });
@@ -354,8 +356,11 @@ function buddySection(): HTMLElement | null {
         h("h3", null, displayName(s, c.id)),
         h("p", { class: "muted small", style: "margin-top:2px" },
           buddyGreeting ? `${displayName(s, c.id)} ${buddyGreeting}.` : "Give them a squish."),
-        h("p", { class: "small", style: "margin-top:8px;font-weight:800;color:var(--good)" },
-          done.length ? `${done.length} thing${done.length > 1 ? "s" : ""} learned` : "just settling in"),
+        // The one line on the home screen that is a reason to open the Buddy tab today.
+        giftReady(b, dayKey(today))
+          ? h("p", { class: "small", style: "margin-top:8px;font-weight:800;color:var(--accent)" }, "\u{1F381} Brought something home for you")
+          : h("p", { class: "small", style: "margin-top:8px;font-weight:800;color:var(--good)" },
+              done.length ? `${done.length} thing${done.length > 1 ? "s" : ""} learned` : "just settling in"),
         next
           ? h("p", { class: "muted small" }, `${next.visits - b.visits} more day${next.visits - b.visits > 1 ? "s" : ""} until something new`)
           : h("p", { class: "muted small" }, "knows every trick there is"),

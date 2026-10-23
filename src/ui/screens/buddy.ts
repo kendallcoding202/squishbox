@@ -1,9 +1,9 @@
 import { CHARACTER_BY_ID, type Character } from "../../data/characters";
 import { decorations, hasOwnVoice, momentText, nextMilestone, reached, tricks, type BuddyState, type Milestone } from "../../game/buddy";
-import { arrive, found, nextFind, pickSpot, SPOTS, SPOT_BY_ID, type Find, type Spot } from "../../game/room";
+import { arrive, found, giftFor, giftReady, nextFind, pickSpot, SPOTS, SPOT_BY_ID, type Find, type Spot } from "../../game/room";
 import { systemRng } from "../../game/rng";
-import { displayName, ownedCount } from "../../game/state";
-import { h, hearts, onTap, toast } from "../dom";
+import { dayKey, displayName, effectiveNow, ownedCount, takeBuddyGift } from "../../game/state";
+import { confetti, h, hearts, onTap, toast } from "../dom";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic, squeak, success } from "../sound";
 import { store } from "../store";
@@ -293,6 +293,37 @@ export function renderBuddy(): HTMLElement {
   }
   refreshFinds();
 
+  // ---- what it brought home ----
+  // The pull that gets a kid into the room at all: something is waiting, and it is a gift
+  // rather than a debt. Nothing builds up while they are away; at worst there is not one yet.
+  const today = effectiveNow(s, new Date());
+  const giftCard = ((): HTMLElement | null => {
+    if (!giftReady(bud, dayKey(today))) return null;
+    const gift = giftFor(bud, dayKey(today));
+    const card = h("div", { class: "card gift-card" },
+      h("div", { class: "row", style: "gap:12px;align-items:center" },
+        h("div", { style: "font-size:34px;line-height:1" }, "\u{1F381}"),
+        h("div", { class: "grow" },
+          h("h3", null, `${name} went exploring`),
+          h("p", { class: "muted small", style: "margin-top:2px" },
+            `It was poking about ${gift.spot.whereabouts} and brought you back ${gift.coins} coins.`),
+        ),
+      ),
+      h("button", { class: "btn block", style: "margin-top:12px", onclick: () => {
+        let got = 0;
+        // update(), not persist(): the coins have to reach the rest of the app, and the
+        // re-render this causes restarts the room cleanly.
+        store.update((st) => { got = takeBuddyGift(st, new Date()); });
+        if (!got) return;
+        coin();
+        haptic("success");
+        confetti(["#ffd23f", "#3fae7a", "#fff"], 50);
+        toast(`+${got} coins from ${name}`);
+      } }, `Take the ${gift.coins} coins`),
+    );
+    return card;
+  })();
+
   const trickList = tricks(bud);
   const next = nextMilestone(bud);
   const done = reached(bud);
@@ -308,6 +339,7 @@ export function renderBuddy(): HTMLElement {
       h("h1", null, name),
       h("span", { class: "pill" }, `${done.length + finds.length} collected`),
     ),
+    giftCard,
     says,
     room,
     h("p", { class: "muted small", style: "margin-top:10px;text-align:center" },

@@ -37,15 +37,17 @@ export interface Spot {
    * cannot see either of them.
    */
   propX?: number;
+  /** As a place, for "was poking about {whereabouts}". */
+  whereabouts: string;
 }
 
 export const SPOTS: readonly Spot[] = [
-  { id: "cushion", x: 50, lane: "front", act: "nap", actMs: 2600, says: "{name} is having a sit down", weight: 3 },
-  { id: "bowl", x: 15, lane: "front", act: "nibble", actMs: 1600, says: "{name} is nosing around the bowl", weight: 2 },
-  { id: "cup", x: 85, lane: "front", act: "sip", actMs: 1600, says: "{name} is having a sip", weight: 2 },
-  { id: "window", x: 24, lane: "back", act: "gaze", actMs: 2400, says: "{name} is watching the clouds go by", weight: 3 },
-  { id: "plant", x: 74, lane: "back", act: "sniff", actMs: 1800, says: "{name} is saying hello to the plant", weight: 2, propX: 88 },
-  { id: "toys", x: 46, lane: "back", act: "dig", actMs: 1800, says: "{name} is rummaging in the toy box", weight: 2, propX: 60 },
+  { id: "cushion", x: 50, lane: "front", act: "nap", actMs: 2600, says: "{name} is having a sit down", weight: 3, whereabouts: "under the cushion" },
+  { id: "bowl", x: 15, lane: "front", act: "nibble", actMs: 1600, says: "{name} is nosing around the bowl", weight: 2, whereabouts: "behind the bowl" },
+  { id: "cup", x: 85, lane: "front", act: "sip", actMs: 1600, says: "{name} is having a sip", weight: 2, whereabouts: "beside the cup" },
+  { id: "window", x: 24, lane: "back", act: "gaze", actMs: 2400, says: "{name} is watching the clouds go by", weight: 3, whereabouts: "on the windowsill" },
+  { id: "plant", x: 74, lane: "back", act: "sniff", actMs: 1800, says: "{name} is saying hello to the plant", weight: 2, propX: 88, whereabouts: "in the plant pot" },
+  { id: "toys", x: 46, lane: "back", act: "dig", actMs: 1800, says: "{name} is rummaging in the toy box", weight: 2, propX: 60, whereabouts: "at the bottom of the toy box" },
 ];
 
 export const SPOT_BY_ID: ReadonlyMap<string, Spot> = new Map(SPOTS.map((s) => [s.id, s]));
@@ -132,4 +134,63 @@ export function nextFind(b: BuddyState): { find: Find; toGo: number } | null {
   const next = FINDS.find((f) => !b.finds.includes(f.id));
   if (!next) return null;
   return { find: next, toGo: Math.max(1, next.at - b.wanders) };
+}
+
+// ---- what the buddy brings home ----
+
+/**
+ * The buddy goes exploring and comes back with something, once a day.
+ *
+ * This is the join between the two halves of the game. Before it, the room gave the
+ * collection nothing and the collection gave the room nothing but a choice of face, so
+ * finishing the day's boxes left a kid with a pet that was lovely and pointless. Coins are
+ * the connection: they are what the collection runs on.
+ *
+ * Coins, specifically, and NOT a dumpling. A free dumpling would be an extra box a day that
+ * slipped past the parent's box cap, and that cap is the one hard limit in this app. Coins
+ * still have to pass through it.
+ *
+ * The amount is flat rather than random. A kids' app has no business running a variable
+ * payout — that is the one reinforcement schedule that is genuinely a slot machine — and a
+ * number a kid can predict is a number they can look forward to. The only thing that moves
+ * it is how much the buddy has explored, which is the behaviour worth rewarding.
+ */
+export interface Gift {
+  coins: number;
+  /** Where it says it was, for the flavour line. */
+  spot: Spot;
+}
+
+/**
+ * A brand new buddy brings home enough for the cheapest basket, which matters because the
+ * very first gift is the one that teaches a kid the room is worth visiting. A fully
+ * explored one brings 36, still under a full daily claim, so the buddy is a second income
+ * rather than a replacement for turning up.
+ */
+export const GIFT_BASE = 12;
+export const GIFT_PER_FIND = 2;
+
+/** FNV-1a. Only used to pick a stable flavour spot from a day key. */
+function hashOf(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * What is waiting on a given day. Derived from the day rather than stored, so it is the
+ * same every time the screen renders — rolling it per render would let a kid reload until
+ * the flavour changed, and would make the number flicker while they looked at it.
+ */
+export function giftFor(b: BuddyState, dayKey: string): Gift {
+  const spot = SPOTS[hashOf(dayKey + b.characterId) % SPOTS.length] as Spot;
+  return { coins: GIFT_BASE + b.finds.length * GIFT_PER_FIND, spot };
+}
+
+/** Is there something waiting? Nothing accrues while away: at worst there is nothing yet. */
+export function giftReady(b: BuddyState, dayKey: string): boolean {
+  return b.lastGiftDay !== dayKey;
 }

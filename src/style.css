@@ -303,6 +303,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .buddy-actor { width: 100%; height: 100%; transform-origin: 50% 92%; }
 .buddy-stage.walking .buddy-actor { animation: b-walk 0.46s ease-in-out infinite; }
 .buddy-says { min-height: 20px; margin-bottom: 8px; }
+/* Something is waiting. Warm rather than urgent: there is no timer on it and nothing is
+   lost by leaving it, so it must not look like an alert. */
+.gift-card { border: 2px solid var(--accent); margin-bottom: 12px; }
 
 /* What it does when it gets somewhere. All small and slow: these play constantly, so
    anything sharp would turn the room into a twitchy place to sit and watch. */
