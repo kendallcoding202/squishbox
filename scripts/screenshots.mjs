@@ -59,7 +59,7 @@ function dayKey(d) {
  * its room. Item keys carry the finish as a suffix (c10x is a gold Sesame); see
  * src/game/finishes.ts.
  */
-function seedSave(now = new Date()) {
+function seedSave(now = new Date(PRETEND_TODAY)) {
   const t = now.getTime();
   const today = dayKey(now);
   return {
@@ -80,7 +80,14 @@ function seedSave(now = new Date()) {
     clockHighWater: t,
     unlockedSeries: ["s1", "s2"],
     appliedDeliveries: [],
-    buddy: { characterId: "l01", since: t - 20 * 864e5, visits: 14, lastVisitDay: today, momentIndex: 2 },
+    // A buddy with some miles on it: enough finds to have opened the garden AND the kitchen
+    // (three in each of the two places before), a shelf worth looking at, and no gift taken
+    // yet so the frame shows what is waiting. See src/game/room.ts.
+    buddy: {
+      characterId: "l01", since: t - 20 * 864e5, visits: 14, lastVisitDay: today, momentIndex: 2,
+      at: null, wanders: 140, bowl: false, cup: false, lastGiftDay: null,
+      finds: ["pebble", "button", "feather", "marble", "leaf", "acorn", "shell", "clover", "sprinkle"],
+    },
     boxesToday: { day: today, count: 3 },
     stats: { boxesOpened: 47, coinsEarned: 520, coinsSpent: 430, tradesCompleted: 6, tradesDeclined: 2, coinsFromSales: 34 },
     log: [
@@ -159,11 +166,33 @@ const SHOTS = [
   },
   {
     name: "buddy",
-    caption: "Pick one\n**to look after.**",
+    caption: "Look after one.\n**It brings things home.**",
     hash: "buddy",
     async prepare(page) {
       await page.waitForSelector(".room");
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(900); // let the buddy settle somewhere rather than mid-stride
+    },
+  },
+  {
+    name: "explore",
+    caption: "**Places to explore.**\nSee what it digs up.",
+    hash: "buddy",
+    /**
+     * Start already outside with the gift collected, rather than clicking through to get
+     * there. Driving the UI worked but was not reproducible: both routes throw a toast and
+     * confetti that have to be waited out, and by the time they clear the visitors have
+     * ambled off on the unseeded system clock, so the frame had somebody in it on some runs
+     * and nobody on others. Here everything on screen is derived from the save and the day.
+     */
+    save: (base) => ({
+      ...base,
+      buddy: { ...base.buddy, at: "grass", lastGiftDay: dayKey(new Date(PRETEND_TODAY)) },
+    }),
+    async prepare(page) {
+      await page.waitForSelector(".room.place-garden");
+      // Under the buddy's first wander (2.8s) and the visitors' first amble (2s at the
+      // earliest), so everyone is still standing where the data says they are.
+      await page.waitForTimeout(1200);
     },
   },
   {
@@ -215,6 +244,31 @@ const SHOTS = [
  * "Gold Golden Dumpling", which reads like a bug on the one frame most people will ever see.
  */
 const FORCED_ROLLS = [0.98, 0.1, 0.999];
+
+/**
+ * The day the app is pretending it is while the shots are taken.
+ *
+ * It has to sit OUTSIDE every seasonal window. Screenshots are per-version metadata and
+ * cannot be changed on a released version without submitting a new build, so a run done in
+ * late October would nail the Halloween banner to the store listing until the next
+ * submission — and it would be wrong from 2 November. Deliberately a dull Tuesday in
+ * September with nothing seasonal open.
+ *
+ * Keep this in step with the windows in src/data/characters.ts.
+ */
+const PRETEND_TODAY = new Date("2026-09-15T10:30:00").getTime();
+
+const freezeClock = (fixed) => {
+  const Real = Date;
+  const Frozen = function (...args) {
+    return args.length ? new Real(...args) : new Real(fixed);
+  };
+  Frozen.now = () => fixed;
+  Frozen.parse = Real.parse;
+  Frozen.UTC = Real.UTC;
+  Frozen.prototype = Real.prototype;
+  globalThis.Date = Frozen;
+};
 
 const forceHeroRoll = (rolls) => {
   const real = crypto.getRandomValues.bind(crypto);
@@ -306,6 +360,7 @@ async function main() {
           isMobile: true,
           reducedMotion: "no-preference",
         });
+        await ctx.addInitScript(freezeClock, PRETEND_TODAY);
         if (shot.lucky) await ctx.addInitScript(forceHeroRoll, FORCED_ROLLS);
         const page = await ctx.newPage();
         const errors = [];
@@ -313,7 +368,7 @@ async function main() {
 
         const hash = shot.hash ?? "home";
         await page.goto(`${BASE}/#${hash}`);
-        await page.evaluate((s) => localStorage.setItem("squishbox.save.v1", JSON.stringify(s)), save);
+        await page.evaluate((s) => localStorage.setItem("squishbox.save.v1", JSON.stringify(s)), shot.save ? shot.save(save) : save);
         await page.reload();
         await page.waitForSelector(".screen");
         await page.waitForTimeout(400);
