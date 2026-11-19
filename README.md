@@ -27,6 +27,10 @@ This is a **retention experiment**, not a product. The question it exists to ans
 
 Everything is stored in the browser's local storage. With friend trading on, the trading post receives an anonymous id, a chosen basket name, and the inventory list, and nothing else.
 
+## Release it
+
+Building, uploading, screenshots and submission run from GitHub Actions. See [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Run it
 
 ```sh

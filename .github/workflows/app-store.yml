@@ -1,0 +1,65 @@
+name: App Store
+
+# Look at, prepare or submit a version in App Store Connect. Run by hand only.
+#
+#   status   reads and prints. Safe at any time.
+#   prepare  creates the version if needed, attaches the build, sets the release notes and
+#            replaces the screenshots with store/screenshots/.
+#   submit   sends a prepared version to review. The one step that cannot be taken back.
+#
+# The build itself comes from the "iOS release" workflow, which has to finish first.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [status, prepare, submit]
+        default: status
+      version:
+        description: Marketing version, e.g. 1.5 (prepare and submit)
+        required: false
+      build:
+        description: Build number, e.g. 13 (prepare)
+        required: false
+      dry_run:
+        description: Say what would change without changing it
+        type: boolean
+        default: false
+      ref:
+        description: Branch or commit whose screenshots and release notes to use
+        default: main
+
+permissions:
+  contents: read
+
+# Two runs editing one version at once would interleave their screenshot uploads.
+concurrency: app-store-connect
+
+jobs:
+  app-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          # Inputs go through the environment, never straight into the script text.
+          ACTION: ${{ inputs.action }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=("$ACTION")
+          if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi
+          if [ -n "$BUILD" ] && [ "$ACTION" = "prepare" ]; then args+=(--build "$BUILD"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          node scripts/asc.mjs "${args[@]}"
