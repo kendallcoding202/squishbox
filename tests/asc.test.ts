@@ -14,6 +14,7 @@ const asc = (await import(/* @vite-ignore */ scriptPath)) as {
   pickSet<S extends { displayType: string }>(sets: S[], family: { id: string; createAs: string }): { managed: S | null; others: S[] };
   FAMILIES: { id: string; createAs: string }[];
   SUBMITTABLE: string[];
+  WITHDRAWABLE: string[];
   parseArgs(argv: string[]): { command: string; dryRun: boolean; version?: string; build?: string };
 };
 
@@ -79,6 +80,9 @@ describe("release script: not trusting the order Apple lists things in", () => {
   it("lets a version bounced for its metadata be sent again", () => {
     expect(asc.SUBMITTABLE).toContain("METADATA_REJECTED");
     expect(asc.SUBMITTABLE).not.toContain("WAITING_FOR_REVIEW");
+    // Withdrawing and submitting must never both apply to one state, or withdraw could not
+    // tell "already out of review" from "still in it".
+    for (const state of asc.WITHDRAWABLE) expect(asc.SUBMITTABLE).not.toContain(state);
   });
 });
 

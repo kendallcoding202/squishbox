@@ -6,6 +6,8 @@ name: App Store
 #   prepare  creates the version if needed, attaches the build, sets the release notes and
 #            replaces the screenshots with store/screenshots/.
 #   submit   sends a prepared version to review. The one step that cannot be taken back.
+#   withdraw takes a version back out of review so its build can be swapped. It loses its
+#            place in the queue.
 #
 # The build itself comes from the "iOS release" workflow, which has to finish first.
 on:
@@ -14,7 +16,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [status, prepare, submit]
+        options: [status, prepare, submit, withdraw]
         default: status
       version:
         description: Marketing version, e.g. 1.5 (prepare and submit)

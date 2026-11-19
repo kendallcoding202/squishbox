@@ -5,6 +5,7 @@
  *   node scripts/asc.mjs status
  *   node scripts/asc.mjs prepare --version 1.5 --build 13 [--dry-run]
  *   node scripts/asc.mjs submit  --version 1.5 [--dry-run]
+ *   node scripts/asc.mjs withdraw --version 1.5 [--dry-run]
  *
  * `status` only reads. `prepare` makes a version ready to send: it creates the version
  * record if there is none, attaches the build, sets the release notes, and replaces the
@@ -163,6 +164,12 @@ async function getAll(path) {
 /** States a version can be sent to review from: never sent, pulled back, or bounced. */
 export const SUBMITTABLE = ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED"];
 
+/** States a version can be pulled back out of review from. */
+export const WITHDRAWABLE = ["WAITING_FOR_REVIEW", "IN_REVIEW"];
+
+/** How long to wait between looks while Apple finishes something. */
+const POLL_MS = Number(process.env.ASC_POLL_MS ?? 5000);
+
 const stateOf = (version) => version.attributes.appVersionState ?? version.attributes.appStoreState;
 
 /** Newest first. Apple does not promise an order, so sort rather than trust the first item. */
@@ -306,7 +313,7 @@ async function waitForProcessing(setId, label) {
     const failed = shots.find((s) => s.attributes.assetDeliveryState?.state === "FAILED");
     if (failed) throw new Error(`${label}: Apple rejected ${failed.attributes.fileName}: ${JSON.stringify(failed.attributes.assetDeliveryState.errors)}`);
     if (states.every((s) => s === "COMPLETE")) return;
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, POLL_MS));
   }
   throw new Error(`${label}: screenshots were still processing after five minutes`);
 }
@@ -364,6 +371,8 @@ async function prepare(appId, { version, build, dryRun }) {
   let record = all.find((v) => v.attributes.versionString === version);
   if (record) {
     console.log(`Version ${version} exists: ${stateOf(record)}`);
+    // Apple locks a version while it is in review. Say so here rather than fail on the first write.
+    if (!dryRun && WITHDRAWABLE.includes(stateOf(record))) throw new Error(`Version ${version} is in review and cannot be changed. Run withdraw first if you mean to swap its build.`);
   } else {
     const inFlight = all.find((v) => ["WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE"].includes(stateOf(v)));
     if (inFlight) throw new Error(`Version ${inFlight.attributes.versionString} is ${stateOf(inFlight)}. Apple allows one version in flight at a time; wait for it or deal with it first.`);
@@ -473,13 +482,45 @@ async function submit(appId, { version, dryRun }) {
   console.log(`Submitted. Version ${version} is now ${stateOf(after)}. Review submission ${submission.id}.`);
 }
 
+/**
+ * Take a version back out of the review queue, so its build can be swapped. It loses its
+ * place: review starts again from the next submit. Waits until Apple has finished letting
+ * go, because a new submission is refused while the old one is still being cancelled.
+ */
+async function withdraw(appId, { version, dryRun }) {
+  if (!version) throw new Error("withdraw needs --version");
+  const record = (await versions(appId)).find((v) => v.attributes.versionString === version);
+  if (!record) throw new Error(`There is no version ${version}.`);
+  if (SUBMITTABLE.includes(stateOf(record))) {
+    console.log(`Version ${version} is ${stateOf(record)}: not in review, nothing to withdraw.`);
+    return;
+  }
+  if (!WITHDRAWABLE.includes(stateOf(record))) throw new Error(`Version ${version} is ${stateOf(record)}, which cannot be withdrawn.`);
+  const open = await get(`/v1/reviewSubmissions?filter[app]=${appId}&filter[platform]=IOS&filter[state]=WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES&limit=5`);
+  const submission = open.data[0];
+  if (!submission) throw new Error(`Version ${version} is ${stateOf(record)} but no open review submission was found for it.`);
+  console.log(`Version ${version} is ${stateOf(record)}: ${dryRun ? "would withdraw" : "withdrawing"} review submission ${submission.id}`);
+  if (dryRun) return;
+  await api("PATCH", `/v1/reviewSubmissions/${submission.id}`, { data: { type: "reviewSubmissions", id: submission.id, attributes: { canceled: true } } });
+  for (let attempt = 0; attempt < 36; attempt++) {
+    const now = (await versions(appId)).find((v) => v.id === record.id);
+    if (SUBMITTABLE.includes(stateOf(now))) {
+      console.log(`Withdrawn. Version ${version} is now ${stateOf(now)}.`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+  throw new Error(`Asked Apple to withdraw version ${version}, but three minutes later it had still not left review. Check App Store Connect before doing anything else.`);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const appId = process.env.ASC_APP_ID || DEFAULT_APP_ID;
   if (opts.command === "status") return status(appId);
   if (opts.command === "prepare") return prepare(appId, opts);
   if (opts.command === "submit") return submit(appId, opts);
-  throw new Error("Usage: node scripts/asc.mjs status | prepare --version V --build N [--dry-run] | submit --version V [--dry-run]");
+  if (opts.command === "withdraw") return withdraw(appId, opts);
+  throw new Error("Usage: node scripts/asc.mjs status | prepare --version V --build N [--dry-run] | submit --version V [--dry-run] | withdraw --version V [--dry-run]");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
