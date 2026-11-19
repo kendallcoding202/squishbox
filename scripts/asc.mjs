@@ -46,6 +46,20 @@ export function familyOf(displayType) {
 }
 
 /**
+ * The one set this script manages for a family, when a version holds several sizes of the
+ * same device. It is the size we generate for; failing that, the first by name, so the
+ * choice never depends on the order Apple happens to list them in. Any other size is left
+ * alone — and reported, because an old set in a smaller size still shows on those devices.
+ */
+export function pickSet(sets, family) {
+  const mine = sets.filter((s) => familyOf(s.displayType)?.id === family.id);
+  const managed = mine.find((s) => s.displayType === family.createAs)
+    ?? [...mine].sort((a, b) => a.displayType.localeCompare(b.displayType))[0]
+    ?? null;
+  return { managed, others: mine.filter((s) => s !== managed) };
+}
+
+/**
  * Order screenshot files the way they should appear in the store. The number in the name
  * is the position ("iphone69-10-x.png" comes after "iphone69-9-x.png"), which a plain
  * string sort gets wrong.
@@ -146,10 +160,18 @@ async function getAll(path) {
   return out;
 }
 
+/** States a version can be sent to review from: never sent, pulled back, or bounced. */
+export const SUBMITTABLE = ["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED"];
+
 const stateOf = (version) => version.attributes.appVersionState ?? version.attributes.appStoreState;
 
+/** Newest first. Apple does not promise an order, so sort rather than trust the first item. */
+export function newestFirst(list) {
+  return [...list].sort((a, b) => String(b.attributes.createdDate ?? "").localeCompare(String(a.attributes.createdDate ?? "")));
+}
+
 async function versions(appId) {
-  return getAll(`/v1/apps/${appId}/appStoreVersions?filter[platform]=IOS&limit=20`);
+  return newestFirst(await getAll(`/v1/apps/${appId}/appStoreVersions?filter[platform]=IOS&limit=20`));
 }
 
 async function localization(versionId) {
@@ -241,10 +263,14 @@ async function status(appId) {
   console.log(`  What's New: ${loc.attributes.whatsNew ? `${loc.attributes.whatsNew.length} characters` : "empty"}`);
   console.log(`  Promotional text: ${loc.attributes.promotionalText ?? "empty"}`);
   const local = await localScreenshots();
-  for (const set of await screenshotSets(loc.id)) {
+  const sets = await screenshotSets(loc.id);
+  const managedIds = new Set(FAMILIES.map((f) => pickSet(sets, f).managed?.id));
+  for (const set of sets) {
     const family = familyOf(set.displayType);
-    const same = family ? setMatches(set.shots, local[family.id]) : null;
-    console.log(`  ${set.displayType}: ${set.shots.length} screenshots${same === null ? "" : same ? ", same as store/screenshots/" : ", DIFFERENT from store/screenshots/"}`);
+    let note = "";
+    if (family && managedIds.has(set.id)) note = setMatches(set.shots, local[family.id]) ? ", same as store/screenshots/" : ", DIFFERENT from store/screenshots/";
+    else if (family) note = ", another size of the same device: NOT managed by this script, check it is not showing old screenshots";
+    console.log(`  ${set.displayType}: ${set.shots.length} screenshots${note}`);
     for (const s of set.shots) console.log(`    ${s.fileName}  ${s.state}`);
   }
 }
@@ -294,7 +320,9 @@ async function replaceScreenshots(loc, dryRun) {
       console.log(`  ${family.id}: no files in store/screenshots/, left alone`);
       continue;
     }
-    let set = sets.find((s) => familyOf(s.displayType)?.id === family.id);
+    const picked = pickSet(sets, family);
+    let set = picked.managed;
+    for (const other of picked.others) console.log(`  ${family.id}: ${other.displayType} also exists with ${other.shots.length} screenshots and is left alone`);
     if (set && setMatches(set.shots, wanted)) {
       console.log(`  ${family.id}: already the ${wanted.length} in store/screenshots/, nothing to do`);
       continue;
@@ -398,7 +426,7 @@ async function submit(appId, { version, dryRun }) {
   if (!version) throw new Error("submit needs --version");
   const record = (await versions(appId)).find((v) => v.attributes.versionString === version);
   if (!record) throw new Error(`There is no version ${version}. Run prepare first.`);
-  if (stateOf(record) !== "PREPARE_FOR_SUBMISSION" && stateOf(record) !== "DEVELOPER_REJECTED" && stateOf(record) !== "REJECTED") {
+  if (!SUBMITTABLE.includes(stateOf(record))) {
     throw new Error(`Version ${version} is ${stateOf(record)}, which is not a state it can be submitted from.`);
   }
   const attached = await get(`/v1/appStoreVersions/${record.id}/build`).catch(() => null);
@@ -411,7 +439,7 @@ async function submit(appId, { version, dryRun }) {
   const sets = loc ? await screenshotSets(loc.id) : [];
   for (const family of FAMILIES) {
     if (local[family.id].length === 0) continue;
-    const set = sets.find((s) => familyOf(s.displayType)?.id === family.id);
+    const set = pickSet(sets, family).managed;
     if (!set || !setMatches(set.shots, local[family.id]) || set.shots.some((shot) => shot.state !== "COMPLETE")) {
       throw new Error(`The ${family.id} screenshots on version ${version} are not the set in store/screenshots/. Run prepare again before submitting.`);
     }

@@ -10,6 +10,10 @@ const asc = (await import(/* @vite-ignore */ scriptPath)) as {
   setMatches(existing: { fileName: string; checksum: string }[], wanted: { fileName: string; checksum: string }[]): boolean;
   makeToken(c: { keyId: string; issuerId: string; privateKey: string }, now?: number): string;
   notesFor(text: string | null, version: string): string;
+  newestFirst<T extends { attributes: { createdDate?: string } }>(list: T[]): T[];
+  pickSet<S extends { displayType: string }>(sets: S[], family: { id: string; createAs: string }): { managed: S | null; others: S[] };
+  FAMILIES: { id: string; createAs: string }[];
+  SUBMITTABLE: string[];
   parseArgs(argv: string[]): { command: string; dryRun: boolean; version?: string; build?: string };
 };
 
@@ -44,6 +48,37 @@ describe("release script: which screenshots go where", () => {
     const pad = asc.orderFiles(names, "ipad13-");
     expect(phone.length).toBeGreaterThan(0);
     expect(pad.map((n) => n.replace("ipad13-", ""))).toEqual(phone.map((n) => n.replace("iphone69-", "")));
+  });
+});
+
+describe("release script: not trusting the order Apple lists things in", () => {
+  it("puts the newest version first whatever order it arrives in", () => {
+    const v = (versionString: string, createdDate: string) => ({ attributes: { versionString, createdDate } });
+    const shuffled = [v("1.2", "2026-10-09T17:00:00Z"), v("1.4", "2026-11-19T17:00:00Z"), v("1.3", "2026-10-23T02:00:00Z")];
+    expect(asc.newestFirst(shuffled).map((x) => x.attributes.versionString)).toEqual(["1.4", "1.3", "1.2"]);
+  });
+
+  it("manages the size we generate for, and leaves other sizes of the same device alone", () => {
+    const iphone = asc.FAMILIES.find((f) => f.id === "iphone")!;
+    const sets = [{ displayType: "APP_IPHONE_65" }, { displayType: "APP_IPAD_PRO_3GEN_129" }, { displayType: "APP_IPHONE_67" }];
+    const forward = asc.pickSet(sets, iphone);
+    const backward = asc.pickSet([...sets].reverse(), iphone);
+    expect(forward.managed?.displayType).toBe("APP_IPHONE_67");
+    expect(backward.managed?.displayType).toBe("APP_IPHONE_67"); // same answer either way round
+    expect(forward.others.map((s) => s.displayType)).toEqual(["APP_IPHONE_65"]);
+  });
+
+  it("still picks one predictably when the size we generate for is not there", () => {
+    const iphone = asc.FAMILIES.find((f) => f.id === "iphone")!;
+    const sets = [{ displayType: "APP_IPHONE_65" }, { displayType: "APP_IPHONE_61" }];
+    expect(asc.pickSet(sets, iphone).managed?.displayType).toBe("APP_IPHONE_61");
+    expect(asc.pickSet([...sets].reverse(), iphone).managed?.displayType).toBe("APP_IPHONE_61");
+    expect(asc.pickSet([{ displayType: "APP_IPAD_PRO_3GEN_129" }], iphone).managed).toBeNull();
+  });
+
+  it("lets a version bounced for its metadata be sent again", () => {
+    expect(asc.SUBMITTABLE).toContain("METADATA_REJECTED");
+    expect(asc.SUBMITTABLE).not.toContain("WAITING_FOR_REVIEW");
   });
 });
 
