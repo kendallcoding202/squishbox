@@ -32,8 +32,11 @@ Nothing runs on a push. Every step is a button, and only step 3 cannot be taken 
 | Prepare | App Store | `action: prepare`, `version`, `build` |
 | Submit | App Store | `action: submit`, `version` |
 
-After the upload Apple processes the build for a few minutes. `prepare` says so plainly if it
-is run too early; run it again.
+After the upload Apple processes the build for a few minutes. `prepare` waits for it, up to
+twenty minutes, so it can be started straight after the upload finishes.
+
+`withdraw` takes a version back out of review so its build can be swapped. It gives up the
+place in the queue, so upload and check the replacement build first.
 
 `prepare` is safe to repeat. It compares what is in the store with what is in the repository
 and only changes what differs, so a run that died half way is fixed by running it again.

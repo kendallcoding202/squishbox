@@ -170,6 +170,9 @@ export const WITHDRAWABLE = ["WAITING_FOR_REVIEW", "IN_REVIEW"];
 /** How long to wait between looks while Apple finishes something. */
 const POLL_MS = Number(process.env.ASC_POLL_MS ?? 5000);
 
+/** How long prepare waits for an uploaded build to finish processing. */
+const BUILD_WAIT_MS = Number(process.env.ASC_BUILD_WAIT_MS ?? 20 * 60 * 1000);
+
 const stateOf = (version) => version.attributes.appVersionState ?? version.attributes.appStoreState;
 
 /** Newest first. Apple does not promise an order, so sort rather than trust the first item. */
@@ -362,6 +365,32 @@ async function replaceScreenshots(loc, dryRun) {
   }
 }
 
+/**
+ * The uploaded build, once Apple has finished with it. An upload that has just succeeded
+ * does not show up at all for the first few minutes and then sits in PROCESSING, so this
+ * waits rather than making whoever ran it guess when to try again. Gives up after twenty
+ * minutes; a build Apple has rejected outright never appears, and it emails the reason.
+ */
+async function waitForBuild(appId, version, build) {
+  const query = `/v1/builds?filter[app]=${appId}&filter[version]=${encodeURIComponent(build)}&filter[preReleaseVersion.version]=${encodeURIComponent(version)}&limit=5`;
+  const deadline = Date.now() + BUILD_WAIT_MS;
+  let said = "";
+  for (;;) {
+    const candidate = (await get(query)).data[0];
+    const state = candidate ? candidate.attributes.processingState : "not there yet";
+    if (state === "VALID") return candidate;
+    if (state === "FAILED" || state === "INVALID") throw new Error(`Apple marked build ${version} (${build}) ${state}. Bump the build number and upload again.`);
+    if (Date.now() >= deadline) {
+      throw new Error(candidate
+        ? `Build ${version} (${build}) was still ${state} after waiting. Run this again in a few minutes.`
+        : `No build ${version} (${build}) has appeared. If the "iOS release" workflow has not run, run it; if it has, Apple may have rejected the upload and emailed why.`);
+    }
+    if (state !== said) console.log(`Build ${version} (${build}): ${state}, waiting for Apple`);
+    said = state;
+    await new Promise((r) => setTimeout(r, Math.min(POLL_MS * 6, 30000)));
+  }
+}
+
 async function prepare(appId, { version, build, dryRun }) {
   if (!version || !build) throw new Error("prepare needs --version and --build");
   const say = dryRun ? "would" : "did";
@@ -389,10 +418,7 @@ async function prepare(appId, { version, build, dryRun }) {
     }
   }
 
-  const found = await get(`/v1/builds?filter[app]=${appId}&filter[version]=${encodeURIComponent(build)}&filter[preReleaseVersion.version]=${encodeURIComponent(version)}&limit=5`);
-  const candidate = found.data[0];
-  if (!candidate) throw new Error(`No build ${version} (${build}) has been uploaded. Run the "iOS release" workflow first.`);
-  if (candidate.attributes.processingState !== "VALID") throw new Error(`Build ${version} (${build}) is ${candidate.attributes.processingState}; it can be attached once Apple has finished processing it.`);
+  const candidate = await waitForBuild(appId, version, build);
   console.log(`Build ${version} (${build}): found, processed`);
 
   if (!record) {
