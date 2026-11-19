@@ -1,0 +1,9 @@
+Squishbox is a collecting game for children. No account and no sign-in: open the app and play.
+
+No money is involved anywhere. There are no in-app purchases, no ads, and no third-party SDKs of any kind. Coins are free (once a day, from album goals, and from selling spare dumplings back to the in-game Steam Pot) and cannot be bought. Nothing has cash value and nothing can be cashed out. The odds for every box are shown on the box before it is opened, and those figures include the game's guarantee of a Rare-or-better every 10 boxes, so they match what a player actually pulls.
+
+Trading with friends over the internet is OFF when the app is installed. With it off the app makes no network requests at all. A grown-up can turn it on in the Parent corner, which is behind a PIN; only then does the app contact our trading post, and it sends only a random id the app generates on the device, a short friend code, a made-up basket name, and the list of dumplings owned. No name, email, phone, location, or device identifier is ever collected. Trading with the in-app neighbour characters is offline and always available.
+
+The Parent corner (PIN protected) also sets a daily limit on boxes and can turn trading off entirely.
+
+This app has seasonal sets of dumplings that appear in the shop for a few weeks each year and are hidden otherwise: 18 October to 1 November, and 1 December to 5 January. If you are reviewing before 1 December you will not see the winter set described in the release notes; that is correct, and it appears on its own on 1 December. Everything else in this version — the buddy's room, the garden and kitchen, the daily coins it brings home — is visible at any time on the Buddy tab once a dumpling has been chosen as the buddy from the Collection. Nothing involves money: all boxes cost in-app coins, which are free once a day.
