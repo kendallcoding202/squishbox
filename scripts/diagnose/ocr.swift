@@ -10,7 +10,8 @@ guard CommandLine.arguments.count > 1,
     exit(1)
 }
 let request = VNRecognizeTextRequest()
-request.recognitionLevel = .accurate
+request.recognitionLevel = .fast
+request.usesCPUOnly = true // hosted runners have no neural engine to hand the work to
 do {
     try VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
 } catch {
