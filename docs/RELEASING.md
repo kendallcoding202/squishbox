@@ -26,8 +26,9 @@ Nothing runs on a push. Every step is a button, and only step 3 cannot be taken 
 
 | Step | Workflow | Inputs |
 | --- | --- | --- |
-| Build and upload | iOS release | `ref` (default `main`) |
+| Build and upload | iOS release | `ref` (default `main`), `runner` and `xcode` (the toolchain) |
 | Look at the store | App Store | `action: status` |
+| How each build was made | App Store | `action: builds` |
 | Rehearse | App Store | `action: prepare`, `version`, `build`, `dry_run: true` |
 | Prepare | App Store | `action: prepare`, `version`, `build` |
 | Submit | App Store | `action: submit`, `version` |
@@ -52,6 +53,33 @@ one is missing or its dates differ from the game's.
 
 The same script runs locally: `node scripts/asc.mjs status` with the three `ASC_*` variables
 set.
+
+## Updates must not lose saves
+
+A player updated from 1.3 to 1.4 and found the collection gone. The cause was never pinned
+down on a simulator, but two things were found and both are now handled:
+
+- **The toolchain changed without anybody choosing it.** 1.3 was built on a Mac with the
+  iOS 27 SDK, 1.4 (13) on a runner with the iOS 26.5 SDK. `action: builds` prints the SDK
+  and entitlements Apple recorded for every uploaded build. The release workflow now names
+  its runner and Xcode as inputs, defaulting to Xcode 27.0; change them on purpose or not at
+  all, and check `builds` afterwards.
+- **The save lived in one place**, the web view's local storage, and a start-up that read it
+  as empty began a new game and saved over it. It is now kept in three: local storage, the
+  app's preferences (written on every save), and a reading the app itself takes from the web
+  view's storage file at launch (`SavePreflight` in `AppDelegate.swift`). `src/game/keeper.ts`
+  chooses between them and will not save a new game over a collection.
+
+**Before any release that touches the native project, the save code, or the toolchain, run
+the "iOS upgrade test" workflow.** It builds the old releases and the new one with both
+toolchains, installs them over one another on an iOS 27 simulator, and prints what each
+launch read from storage, what was on screen, and what is on disk. The runs named `blind-…`
+make the web view unable to read the save back, which is the failure on demand: the
+collection must still come up. `new_ref` is the commit to test; update `old_ref` and
+`mid_ref` to the releases people actually have.
+
+Its screenshots lag on hosted runners (a screen can be captured before it has drawn). Go by
+what the page reports, not by the picture.
 
 ## One-time setup: repository secrets
 

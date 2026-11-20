@@ -19,6 +19,14 @@ on:
         description: Upload to App Store Connect (off = build and sign only, to test the setup)
         type: boolean
         default: true
+      runner:
+        description: Which machine builds it. xcode-27 has the iOS 27 SDK; macos-latest has Xcode 26.
+        type: choice
+        options: [xcode-27, macos-latest]
+        default: xcode-27
+      xcode:
+        description: Xcode to build with, as a path under /Applications (blank = the runner's default)
+        default: /Applications/Xcode_27.0.app
 
 permissions:
   contents: read
@@ -31,9 +39,26 @@ env:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 45
     steps:
+      # Which toolchain built a release is part of what the release is. 1.3 was built with the
+      # iOS 27 SDK and 1.4 (13) with the iOS 26.5 one without anybody choosing that, and 1.4
+      # is the update a player lost a collection on. `node scripts/asc.mjs builds` shows what
+      # each uploaded build was made with.
+      - name: Choose the toolchain
+        env:
+          XCODE: ${{ inputs.xcode }}
+        run: |
+          ls -d /Applications/Xcode*.app
+          if [ -n "$XCODE" ]; then
+            if [ ! -d "$XCODE" ]; then echo "$XCODE is not on this runner."; exit 1; fi
+            echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+            export DEVELOPER_DIR="$XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcodebuild -version -sdk iphoneos ProductBuildVersion
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
