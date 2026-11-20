@@ -1,0 +1,138 @@
+name: iOS upgrade test
+
+# Does a save survive installing a new build over an old one? Run by hand.
+#
+# Builds an old release and a new one for the iPhone simulator, installs the old one with a
+# real save, installs the new one over it, and prints what is on disk after each. It touches
+# nothing outside the runner: no signing, no secrets, no App Store.
+#
+# Written after a player lost a whole collection updating from 1.3 to 1.4. The "oldest"
+# variant builds the old release with the oldest Xcode on the runner, to stand in for a
+# build made on a different machine.
+on:
+  workflow_dispatch:
+    inputs:
+      old_ref:
+        description: The release people are updating from
+        default: ca8c605573ee508ae97e0d4f73e7b0c5fbc1fc6f
+      new_ref:
+        description: The release they are updating to
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        old_toolchain: [same, oldest]
+    env:
+      BUNDLE_ID: com.kendallcoding202.squishbox
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.new_ref }}
+          path: new
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.old_ref }}
+          path: old
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          path: tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: What is on this runner
+        run: |
+          ls -d /Applications/Xcode*.app
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Choose the toolchain for the old build
+        env:
+          WANT: ${{ matrix.old_toolchain }}
+        run: |
+          current=$(xcode-select -p)
+          if [ "$WANT" = "oldest" ]; then
+            oldest=$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | head -n 1)
+            echo "OLD_DEVELOPER_DIR=$oldest/Contents/Developer" >> "$GITHUB_ENV"
+          else
+            echo "OLD_DEVELOPER_DIR=$current" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the old release, seeded with a real save
+        run: |
+          set -o pipefail
+          cd old
+          npm ci
+          npm run build
+          node ../tools/scripts/diagnose/seed-old-build.mjs dist/index.html ../tools/tests/fixtures/save-1.3-rich.json
+          npx cap sync ios
+          echo "Old build uses: $(DEVELOPER_DIR="$OLD_DEVELOPER_DIR" xcodebuild -version | tr '\n' ' ')"
+          DEVELOPER_DIR="$OLD_DEVELOPER_DIR" xcodebuild build \
+            -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/old-build" CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/old.log" 2>&1 || { grep -E "error:" -A 3 "$RUNNER_TEMP/old.log" | tail -n 60; tail -n 30 "$RUNNER_TEMP/old.log"; exit 1; }
+          tail -n 2 "$RUNNER_TEMP/old.log"
+
+      - name: Build the new release, exactly as committed
+        run: |
+          set -o pipefail
+          cd new
+          npm ci
+          npm run ios:sync
+          xcodebuild build \
+            -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/new-build" CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/new.log" 2>&1 || { grep -E "error:" -A 3 "$RUNNER_TEMP/new.log" | tail -n 60; tail -n 30 "$RUNNER_TEMP/new.log"; exit 1; }
+          tail -n 2 "$RUNNER_TEMP/new.log"
+
+      - name: Compare the two apps
+        run: |
+          for which in old new; do
+            app="$RUNNER_TEMP/$which-build/Build/Products/Release-iphonesimulator/App.app"
+            echo "== $which: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")) sdk=$(/usr/libexec/PlistBuddy -c 'Print :DTSDKName' "$app/Info.plist") xcode=$(/usr/libexec/PlistBuddy -c 'Print :DTXcode' "$app/Info.plist") id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+            cat "$app/capacitor.config.json"; echo
+          done
+
+      - name: Start a simulator
+        run: |
+          runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x.get('isAvailable') and x.get('platform')=='iOS']; r.sort(key=lambda x:[int(p) for p in x['version'].split('.')]); print(r[-1]['identifier'])")
+          device=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys; d=[x for x in json.load(sys.stdin)['devicetypes'] if x['name'].startswith('iPhone 1') and 'Pro' not in x['name'] and 'Plus' not in x['name'] and 'e' != x['name'][-1]]; print(d[-1]['identifier'])")
+          echo "runtime $runtime, device $device"
+          udid=$(xcrun simctl create upgrade-test "$device" "$runtime")
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      - name: Install the old release and let it save
+        run: |
+          xcrun simctl install "$UDID" "$RUNNER_TEMP/old-build/Build/Products/Release-iphonesimulator/App.app"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 25
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
+          sleep 4
+          python3 tools/scripts/diagnose/dump-webview-storage.py "$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)" "after the OLD release ran"
+
+      - name: Install the new release over it and look again
+        run: |
+          xcrun simctl install "$UDID" "$RUNNER_TEMP/new-build/Build/Products/Release-iphonesimulator/App.app"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 25
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
+          sleep 4
+          python3 tools/scripts/diagnose/dump-webview-storage.py "$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)" "after the NEW release ran over it"
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/after.png" || true
+
+      - name: Tidy up
+        if: ${{ always() }}
+        run: xcrun simctl delete "$UDID" || true
