@@ -18,7 +18,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [status, prepare, submit, withdraw, promo]
+        options: [status, builds, prepare, submit, withdraw, promo]
         default: status
       version:
         description: Marketing version, e.g. 1.5 (prepare and submit)

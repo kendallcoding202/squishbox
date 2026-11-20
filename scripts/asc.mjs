@@ -330,6 +330,24 @@ async function status(appId) {
   }
 }
 
+// Read-only. What Apple recorded about how each build was made: which SDK it was linked
+// against and what it is entitled to. Written to compare builds after an update lost a save.
+async function builds(appId) {
+  const res = await get(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=8&include=preReleaseVersion,buildBundles`);
+  const included = new Map((res.included ?? []).map((x) => [`${x.type}:${x.id}`, x]));
+  for (const b of res.data) {
+    const pre = included.get(`preReleaseVersions:${b.relationships?.preReleaseVersion?.data?.id}`);
+    console.log(`\n${pre?.attributes?.version ?? "?"} (${b.attributes.version})  uploaded ${b.attributes.uploadedDate}  minOS ${b.attributes.minOsVersion}  ${b.attributes.processingState}`);
+    for (const ref of b.relationships?.buildBundles?.data ?? []) {
+      const bundle = included.get(`buildBundles:${ref.id}`)?.attributes;
+      if (!bundle) continue;
+      console.log(`  ${bundle.bundleId} ${bundle.bundleType}  sdkBuild ${bundle.sdkBuild}  platformBuild ${bundle.platformBuild}  file ${bundle.fileName}`);
+      console.log(`  architectures ${JSON.stringify(bundle.supportedArchitectures)}  capabilities ${JSON.stringify(bundle.requiredCapabilities)}`);
+      console.log(`  entitlements ${JSON.stringify(bundle.entitlements)}`);
+    }
+  }
+}
+
 async function uploadScreenshot(setId, file) {
   const reserved = await api("POST", "/v1/appScreenshots", {
     data: {
@@ -610,11 +628,12 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const appId = process.env.ASC_APP_ID || DEFAULT_APP_ID;
   if (opts.command === "status") return status(appId);
+  if (opts.command === "builds") return builds(appId);
   if (opts.command === "prepare") return prepare(appId, opts);
   if (opts.command === "submit") return submit(appId, opts);
   if (opts.command === "withdraw") return withdraw(appId, opts);
   if (opts.command === "promo") return promo(appId, opts);
-  throw new Error("Usage: node scripts/asc.mjs status | prepare --version V --build N [--dry-run] | submit --version V [--dry-run] | withdraw --version V [--dry-run] | promo [--dry-run]");
+  throw new Error("Usage: node scripts/asc.mjs status | builds | prepare --version V --build N [--dry-run] | submit --version V [--dry-run] | withdraw --version V [--dry-run] | promo [--dry-run]");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
