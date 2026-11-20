@@ -10,7 +10,8 @@ import { newState, readSave, type SaveState } from "./state";
  *
  * The rules, in order:
  *   1. Of the copies that can be read, the one written most recently wins (highest `rev`).
- *   2. On a tie the web view's own copy wins, then the phone's copy, then the snapshot.
+ *   2. On a tie the web view's own copy wins, then the phone's copy, then what the app read
+ *      from the web view's file at launch, then the snapshot.
  *   3. A copy that is there but cannot be read is never thrown away: it is handed back in
  *      `unreadable` so the caller can put it somewhere safe.
  *   4. Only when no copy can be read does a new game start.
@@ -22,34 +23,57 @@ export interface Copies {
   local: string | null;
   /** The phone's own copy, written alongside every save. */
   vault: string | null;
+  /**
+   * What the app itself read out of the web view's storage file as it launched, before the
+   * web view opened it. Normally identical to `local`; it matters on the launch where the
+   * web view says there is nothing. A list, in case the file exists in more than one place.
+   */
+  preflight?: string[];
   /** The save as it stood when this build first ran, kept until the next build replaces it. */
   snapshot: string | null;
 }
 
-export type Source = "local" | "vault" | "snapshot" | "fresh";
+export type Source = "local" | "vault" | "preflight" | "snapshot" | "fresh";
 
 export interface StartPlan {
   state: SaveState;
   source: Source;
+  /** The text of the copy chosen, exactly as it was stored. Null for a new game. */
+  raw: string | null;
   /** Raw text of copies that exist and could not be read. Keep them; do not write over them. */
   unreadable: string[];
 }
 
-const ORDER: Exclude<Source, "fresh">[] = ["local", "vault", "snapshot"];
-
 export function planStart(copies: Copies): StartPlan {
   const unreadable: string[] = [];
-  let best: { state: SaveState; source: Exclude<Source, "fresh"> } | null = null;
-  for (const source of ORDER) {
-    const read = readSave(copies[source]);
+  let best: { state: SaveState; source: Exclude<Source, "fresh">; raw: string } | null = null;
+  const consider = (source: Exclude<Source, "fresh">, raw: string | null | undefined): void => {
+    const read = readSave(raw);
     if (read.kind === "unreadable") {
       if (!unreadable.includes(read.raw)) unreadable.push(read.raw);
-      continue;
+      return;
     }
-    if (read.kind !== "ok") continue;
-    if (!best || read.state.rev > best.state.rev) best = { state: read.state, source };
+    if (read.kind !== "ok") return;
+    if (!best || read.state.rev > best.state.rev) best = { state: read.state, source, raw: raw as string };
+  };
+  consider("local", copies.local);
+  consider("vault", copies.vault);
+  for (const raw of copies.preflight ?? []) consider("preflight", raw);
+  consider("snapshot", copies.snapshot);
+  const chosen = best as { state: SaveState; source: Exclude<Source, "fresh">; raw: string } | null;
+  return chosen ? { state: chosen.state, source: chosen.source, raw: chosen.raw, unreadable } : { state: newState(), source: "fresh", raw: null, unreadable };
+}
+
+/** The app's launch-time reading of the web view's file: a JSON list of save texts. */
+export function parsePreflight(text: string | null | undefined): string[] {
+  if (!text) return [];
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
+  } catch {
+    /* not a list */
   }
-  return best ? { ...best, unreadable } : { state: newState(), source: "fresh", unreadable };
+  return [];
 }
 
 /** A snapshot is stored with the build that took it, so the next build knows to replace it. */

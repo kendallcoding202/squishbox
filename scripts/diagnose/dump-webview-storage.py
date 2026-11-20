@@ -7,7 +7,7 @@ every local-storage database under the app's WebKit folder, so that two copies i
 (which is what a change of storage location looks like) both show up, and reads the backup
 the app keeps in its preferences.
 
-Usage: dump-webview-storage.py <app data container> [label] [exported preferences plist]
+Usage: dump-webview-storage.py <app data container> [label] [the app's preferences plist]
 """
 import json, os, plistlib, sqlite3, sys
 
@@ -63,6 +63,12 @@ if prefs and os.path.exists(prefs) and os.path.getsize(prefs):
     save = values.get("CapacitorStorage.squishbox.save")
     snap = values.get("CapacitorStorage.squishbox.snapshot")
     aside = values.get("CapacitorStorage.squishbox.unreadable")
+    pre = values.get("CapacitorStorage.squishbox.preflight")
+    if pre:
+        try:
+            print("  READ AT LAUNCH: " + " ; ".join(describe(x) for x in json.loads(pre)))
+        except Exception:
+            print("  READ AT LAUNCH: unreadable")
     print(f"  PHONE'S COPY: {describe(save) if save else 'none'}")
     if snap:
         try:

@@ -58,24 +58,19 @@ for item in "$@"; do
       shot="shots/$step-$item-$launch-${at}s.png"
       xcrun simctl io "$udid" screenshot "$shot" >/dev/null 2>&1 || true
       size=$(stat -f %z "$shot" 2>/dev/null || echo 0)
-      seen="something is drawn"; if [ "$size" -lt 250000 ]; then seen="BLANK"; fi
+      seen="drawn"; if [ "$size" -lt 250000 ]; then seen="not drawn yet, or not in front"; fi
       text=""; if [ -x "$work/ocr" ] && [ -f "$shot" ]; then text=$("$work/ocr" "$shot" 2>/dev/null | cut -c1-150 || true); fi
       echo "  $launch launch, ${at}s in: $seen ($size bytes) $text"
     done
-    if [ "$launch" = "first" ]; then
-      xcrun simctl spawn "$udid" defaults export "$bundle" - > "$work/prefs.plist" 2>/dev/null || : > "$work/prefs.plist"
-    fi
     xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
     kill "$console" >/dev/null 2>&1 || true
     wait "$console" 2>/dev/null || true
     echo "  what the $launch launch said:"
-    grep -a "DIAG\|⚡️  \(WebView\|Loading\|JS Eval\|ERROR\|To Native\)" "$work/console.txt" | grep -av "To Native ->  Console\|TO JS" | cut -c1-230 | sed 's/^/    /' | head -n 30 || true
+    grep -a "DIAG" "$work/console.txt" | grep -a "page start\|at start\|at 2000ms screen\|vault\|ERROR\|REJECTION\|THREW" | sed 's/.*DIAG /    /' | cut -c1-230 | head -n 14 || true
     if ! grep -aq "DIAG" "$work/console.txt"; then echo "    (the page never spoke: $(wc -c < "$work/console.txt" | tr -d ' ') bytes of console in all)"; tail -n 5 "$work/console.txt" | cut -c1-200 | sed 's/^/    | /'; fi
-    echo "  WebKit and the app in the system log:"
-    xcrun simctl spawn "$udid" log show --last 40s --style compact \
-      --predicate '(process == "App" OR process BEGINSWITH "com.apple.WebKit") AND (messageType == error OR messageType == fault OR eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "unresponsive" OR eventMessage CONTAINS[c] "terminat")' 2>/dev/null \
-      | grep -v "^Timestamp\\|^Filtering" | cut -c1-240 | head -n 12 | sed 's/^/    /' || true
     sleep 3
   done
-  python3 "$here/dump-webview-storage.py" "$(xcrun simctl get_app_container "$udid" "$bundle" data)" "after $item" "$work/prefs.plist"
+  data=$(xcrun simctl get_app_container "$udid" "$bundle" data)
+  sleep 4 # preferences reach the disk a moment after the app has gone
+  python3 "$here/dump-webview-storage.py" "$data" "after $item" "$data/Library/Preferences/$bundle.plist"
 done

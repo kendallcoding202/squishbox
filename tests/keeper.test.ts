@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Keeper, LOCAL_UNREADABLE, VAULT_SAVE, VAULT_SNAPSHOT, VAULT_UNREADABLE, type LocalStore, type VaultBackend } from "../src/game/keeper";
-import { parseSnapshot, planStart, shouldSnapshot } from "../src/game/recover";
+import { Keeper, LOCAL_UNREADABLE, VAULT_PREFLIGHT, VAULT_SAVE, VAULT_SNAPSHOT, VAULT_UNREADABLE, type LocalStore, type VaultBackend } from "../src/game/keeper";
+import { parsePreflight, parseSnapshot, planStart, shouldSnapshot } from "../src/game/recover";
 import { newState, readSave, SAVE_KEY, type SaveState } from "../src/game/state";
 
 // The save a real 1.3 build wrote after being played: 44 dumplings, a buddy, 8840 coins.
@@ -215,6 +215,83 @@ describe("the thing that went wrong: the web view comes up empty", () => {
     k.state.onboarded = true; k.write();
     await k.flushed();
     expect(vaultSave(vault).onboarded).toBe(true);
+  });
+});
+
+describe("the first launch of the fix itself, when the web view says there is nothing", () => {
+  // No backup has ever been written: this build has never run. All there is, is what the
+  // app read out of the web view's file as it launched.
+  class Blind extends FakeLocal {
+    blind = true;
+    override getItem(k: string): string | null { return this.blind ? null : super.getItem(k); }
+  }
+  const preflightOf = (...raws: string[]): FakeVault => {
+    const vault = new FakeVault();
+    vault.data.set(VAULT_PREFLIGHT, JSON.stringify(raws));
+    return vault;
+  };
+
+  it("starts from what the app read off the file before the web view opened it", async () => {
+    const local = new Blind(); local.data.set(SAVE_KEY, RICH);
+    const vault = preflightOf(RICH);
+    const k = make(local, vault);
+    expect(await k.ready).toEqual({ source: "preflight", restored: true });
+    expect(total(k.state)).toBe(44);
+    await k.flushed();
+    expect(total(vaultSave(vault))).toBe(44); // and now there is a proper backup as well
+    expect(parseSnapshot(vault.data.get(VAULT_SNAPSHOT))?.raw).toBe(RICH);
+  });
+
+  it("takes the newest when the file turned up in more than one place", async () => {
+    const older = JSON.stringify({ ...newState(), rev: 4, coins: 111, onboarded: true });
+    const newer = JSON.stringify({ ...newState(), rev: 9, coins: 222, onboarded: true });
+    const k = make(new FakeLocal(), preflightOf(older, newer, "{junk"));
+    await k.ready;
+    expect(k.state.coins).toBe(222);
+  });
+
+  it("changes nothing on an ordinary launch, where it matches the local save", async () => {
+    const local = new FakeLocal(); local.data.set(SAVE_KEY, RICH);
+    const k = make(local, preflightOf(RICH));
+    expect(await k.ready).toEqual({ source: "local", restored: false });
+    let restored = false;
+    k.onRestore = () => { restored = true; };
+    await tick();
+    expect(restored).toBe(false);
+  });
+
+  it("reads a preflight that is not a list as nothing at all", () => {
+    expect(parsePreflight(null)).toEqual([]);
+    expect(parsePreflight("{bad")).toEqual([]);
+    expect(parsePreflight(JSON.stringify({ a: 1 }))).toEqual([]);
+    expect(parsePreflight(JSON.stringify(["x", 3, "", "y"]))).toEqual(["x", "y"]);
+  });
+
+  it("will not save a new game over a save that turns out to be there after all", async () => {
+    // No vault to ask, nothing read at launch: every other defence is out of the picture.
+    const local = new Blind(); local.data.set(SAVE_KEY, RICH);
+    const k = make(local, null);
+    expect((await k.ready).source).toBe("fresh"); // the welcome screen is showing
+    let restoredFrom = "";
+    k.onRestore = (source) => { restoredFrom = source; };
+    local.blind = false; // the web view's storage has come back
+    k.state.onboarded = true; // the kid taps "Open my first basket"
+    k.write();
+    expect(restoredFrom).toBe("local");
+    expect(total(k.state)).toBe(44);
+    expect(local.getItem(SAVE_KEY)).toBe(RICH); // not a byte of it written over
+    k.state.coins += 1; k.write(); // and from here on it saves as normal
+    const stored = readSave(local.getItem(SAVE_KEY));
+    expect(stored.kind === "ok" && stored.state.coins).toBe(8841);
+  });
+
+  it("still lets a genuinely new player save", async () => {
+    const local = new FakeLocal();
+    const k = make(local, null);
+    await k.ready;
+    k.state.onboarded = true; k.write();
+    const stored = readSave(local.getItem(SAVE_KEY));
+    expect(stored.kind === "ok" && stored.state.onboarded).toBe(true);
   });
 });
 

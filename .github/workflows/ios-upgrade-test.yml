@@ -34,13 +34,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: old-sdk26, os: macos-26, ref: "${{ inputs.old_ref }}", seed: true, probe: true, xcode: "" }
-          - { name: old-sdk27, os: xcode-27, ref: "${{ inputs.old_ref }}", seed: true, probe: true, xcode: /Applications/Xcode_27.0.app }
-          - { name: v14-sdk26, os: macos-26, ref: "${{ inputs.mid_ref }}", seed: false, probe: true, xcode: "" }
-          - { name: fix-sdk26, os: macos-26, ref: "${{ inputs.new_ref }}", seed: false, probe: true, xcode: "" }
-          - { name: fix-sdk27, os: xcode-27, ref: "${{ inputs.new_ref }}", seed: false, probe: true, xcode: /Applications/Xcode_27.0.app }
-          # 1.4 (13) with nothing added to it at all, in case the probe changes what it is looking at.
-          - { name: v14-sdk26-plain, os: macos-26, ref: "${{ inputs.mid_ref }}", seed: false, probe: false, xcode: "" }
+          - { name: old-sdk26, os: macos-26, ref: "${{ inputs.old_ref }}", probe: "--seed ../tools/tests/fixtures/save-1.3-rich.json", xcode: "" }
+          - { name: old-sdk27, os: xcode-27, ref: "${{ inputs.old_ref }}", probe: "--seed ../tools/tests/fixtures/save-1.3-rich.json", xcode: /Applications/Xcode_27.0.app }
+          - { name: v14-sdk26, os: macos-26, ref: "${{ inputs.mid_ref }}", probe: "", xcode: "" }
+          - { name: fix-sdk26, os: macos-26, ref: "${{ inputs.new_ref }}", probe: "", xcode: "" }
+          - { name: fix-sdk27, os: xcode-27, ref: "${{ inputs.new_ref }}", probe: "", xcode: /Applications/Xcode_27.0.app }
+          # The fix with its page unable to read the save back, though the file still holds it.
+          - { name: fix-sdk27-blind, os: xcode-27, ref: "${{ inputs.new_ref }}", probe: "--blind", xcode: /Applications/Xcode_27.0.app }
+          - { name: fix-sdk26-blind, os: macos-26, ref: "${{ inputs.new_ref }}", probe: "--blind", xcode: "" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,7 +56,6 @@ jobs:
       - name: Build for the simulator
         env:
           XCODE: ${{ matrix.xcode }}
-          SEED: ${{ matrix.seed }}
           PROBE: ${{ matrix.probe }}
           NAME: ${{ matrix.name }}
         run: |
@@ -68,15 +68,10 @@ jobs:
           npm run build
           # Test builds report what they see through the console; the old ones also start with a
           # save somebody has played. See scripts/diagnose/probe-build.mjs.
-          if [ "$SEED" = "true" ]; then
-            node ../tools/scripts/diagnose/probe-build.mjs dist/index.html --seed ../tools/tests/fixtures/save-1.3-rich.json
-          elif [ "$PROBE" = "true" ]; then
-            node ../tools/scripts/diagnose/probe-build.mjs dist/index.html
-          fi
+          # shellcheck disable=SC2086
+          node ../tools/scripts/diagnose/probe-build.mjs dist/index.html $PROBE
           npx cap sync ios
-          if [ "$PROBE" = "true" ]; then
-            node -e 'const fs=require("fs");const f="ios/App/App/capacitor.config.json";const c=JSON.parse(fs.readFileSync(f,"utf8"));c.loggingBehavior="production";fs.writeFileSync(f,JSON.stringify(c,null,1));'
-          fi
+          node -e 'const fs=require("fs");const f="ios/App/App/capacitor.config.json";const c=JSON.parse(fs.readFileSync(f,"utf8"));c.loggingBehavior="production";fs.writeFileSync(f,JSON.stringify(c,null,1));'
           xcodebuild build \
             -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
@@ -106,19 +101,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # What happened: 1.3 from the Mac, then 1.4 from the runner. Then each way of fixing it.
+          # What happened: 1.3 from the Mac, then 1.4 from the runner, then the fix.
           - { id: what-happened-then-fix-sdk27, runtime: latest, steps: "old-sdk27 v14-sdk26 fix-sdk27" }
           - { id: what-happened-then-fix-sdk26, runtime: latest, steps: "old-sdk27 v14-sdk26 fix-sdk26" }
           - { id: what-happened-on-ios-27-0, runtime: "27.0", steps: "old-sdk27 v14-sdk26 fix-sdk27" }
-          - { id: what-happened-unprobed, runtime: latest, steps: "old-sdk27 v14-sdk26-plain" }
-          # The whole history of a phone that had every release: 1.2-style, 1.3, 1.4.
-          - { id: full-history, runtime: latest, steps: "old-sdk26 old-sdk27 v14-sdk26" }
-          # The fix itself: the web view's storage is lost outright, and the toolchain changes again.
+          # Straight from 1.3 to the fix, for anyone who never took 1.4.
+          - { id: from-1-3-to-fix-sdk27, runtime: latest, steps: "old-sdk27 fix-sdk27" }
+          - { id: from-1-3-to-fix-sdk26, runtime: latest, steps: "old-sdk27 fix-sdk26" }
+          # The failure itself, on demand: the fix's first launch, with the web view saying "no save".
+          - { id: blind-first-launch-sdk27, runtime: latest, steps: "old-sdk27 fix-sdk27-blind" }
+          - { id: blind-first-launch-sdk26, runtime: latest, steps: "old-sdk27 v14-sdk26 fix-sdk26-blind" }
+          # The web view's storage lost outright after the fix has run once.
           - { id: fix-survives-a-wipe, runtime: latest, steps: "old-sdk27 fix-sdk27 WIPE fix-sdk27" }
-          - { id: fix-survives-a-toolchain-change, runtime: latest, steps: "old-sdk27 fix-sdk27 fix-sdk26 fix-sdk27" }
-          # For comparison: the same toolchain throughout, and the very same build twice.
-          - { id: same-toolchain, runtime: latest, steps: "old-sdk26 v14-sdk26 fix-sdk26" }
-          - { id: same-build-twice, runtime: latest, steps: "old-sdk27 old-sdk27" }
+          # A new player: nothing saved anywhere, no web view folder for the launch-time read to find.
+          - { id: new-player, runtime: latest, steps: "fix-sdk27 fix-sdk26" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
