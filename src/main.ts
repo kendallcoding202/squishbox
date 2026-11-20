@@ -45,30 +45,44 @@ function go(tab: Tab): void {
   render();
 }
 
-setSoundEnabled(store.state.settings.sound);
-store.subscribe((s) => { setSoundEnabled(s.settings.sound); render(); });
-// If the device won't let us write, the collection only exists until the app closes.
-// Better a kid's grown-up sees this now than an empty basket tomorrow.
-store.onSaveError(() => {
-  toast("This device isn't saving the collection. Ask a grown-up to check storage space.");
-});
-document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
-// Nothing in this game should carry on in the background. The buddy's room in particular
-// must not be mid-wander with a timer pending while the app is away; it picks up on return.
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") pauseBuddyLife();
-  else if (current === "buddy") render(); // a cleared loop only restarts on a rebuild
-});
-onCollectionRerender(render);
-onHomeRerender(render);
-onTradeRerender(render);
-onParentsRerender(render);
-setDeliveryHandler((partnerName, give, get) => {
-  const got = get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
-  toast(`Trade with ${partnerName} done! You got ${got}`);
-  success(); confetti(["#3fae7a", "#ffd23f", "#ff8f5e"], 50);
-});
-onNetChange(() => { if (current === "trade") render(); });
-startSync();
-window.addEventListener("hashchange", () => { const t = location.hash.slice(1) as Tab; if (TABS.some((x) => x.id === t) && t !== current) go(t); });
-render();
+// Nothing is drawn until the save has been found. When the web view's copy is there this is
+// immediate; when it is not, the phone's own copy is asked first, because "no save" on
+// start-up has turned out to mean "lost" as well as "new", and a welcome screen shown to a
+// kid with fifty dumplings is one tap away from saving over all of them.
+async function start(): Promise<void> {
+  const report = await store.ready;
+  setSoundEnabled(store.state.settings.sound);
+  store.subscribe((s) => { setSoundEnabled(s.settings.sound); render(); });
+  // If the device won't let us write, the collection only exists until the app closes.
+  // Better a kid's grown-up sees this now than an empty basket tomorrow.
+  store.onSaveError(() => {
+    toast("This device isn't saving the collection. Ask a grown-up to check storage space.");
+  });
+  document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
+  // Nothing in this game should carry on in the background. The buddy's room in particular
+  // must not be mid-wander with a timer pending while the app is away; it picks up on return.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") pauseBuddyLife();
+    else if (current === "buddy") render(); // a cleared loop only restarts on a rebuild
+  });
+  onCollectionRerender(render);
+  onHomeRerender(render);
+  onTradeRerender(render);
+  onParentsRerender(render);
+  setDeliveryHandler((partnerName, give, get) => {
+    const got = get.map((id) => CHARACTER_BY_ID.get(id)?.name ?? id).join(", ") || "nothing";
+    toast(`Trade with ${partnerName} done! You got ${got}`);
+    success(); confetti(["#3fae7a", "#ffd23f", "#ff8f5e"], 50);
+  });
+  onNetChange(() => { if (current === "trade") render(); });
+  startSync();
+  window.addEventListener("hashchange", () => { const t = location.hash.slice(1) as Tab; if (TABS.some((x) => x.id === t) && t !== current) go(t); });
+  render();
+  const welcomeBack = (): void => {
+    document.querySelectorAll(".overlay").forEach((o) => o.remove()); // a welcome meant for somebody new
+    toast("Found your dumplings! Your collection is back.");
+  };
+  store.onRestore(() => { pauseBuddyLife(); pauseTradeTimers(); welcomeBack(); });
+  if (report.restored) welcomeBack();
+}
+void start();

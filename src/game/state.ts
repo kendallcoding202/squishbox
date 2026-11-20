@@ -59,6 +59,12 @@ export interface SaveState {
   celebrated: SeriesId[];
   /** Trading post identity. Random id and token, a friend code, a chosen basket name. No personal data. */
   net: NetCredentials | null;
+  /**
+   * Counts every write, so that of two copies of a save the newer one can be told apart.
+   * It only goes up: an intentional reset carries on from the old count rather than
+   * starting again, which is what stops a backup from "restoring" what a grown-up cleared.
+   */
+  rev: number;
 }
 
 export const STARTING_COINS = 50;
@@ -100,6 +106,7 @@ export function newState(playerName = "You"): SaveState {
     shelf: [],
     celebrated: [],
     net: null,
+    rev: 0,
   };
 }
 
@@ -538,67 +545,93 @@ export function inventoryValue(inv: Inventory): number {
 
 // ---- persistence ----
 
-const KEY = "squishbox.save.v1";
+export const SAVE_KEY = "squishbox.save.v1";
 
-export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
+/**
+ * What reading a stored save came to. "none" and "unreadable" are different things and must
+ * stay different: nothing there means a new player, while something we could not read is a
+ * collection that may still be recoverable and must never be written over.
+ */
+export type SaveRead =
+  | { kind: "none" }
+  | { kind: "ok"; state: SaveState }
+  | { kind: "unreadable"; raw: string };
+
+/** Turn the text of a stored save into a state, filling in whatever an older build left out. */
+export function readSave(raw: string | null | undefined): SaveRead {
+  if (!raw) return { kind: "none" };
   try {
-    const raw = storage?.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<SaveState>;
-      if (parsed.version === 1) {
-        const fresh = newState();
-        // Older saves lack newer fields; nested objects are merged so defaults fill in.
-        const merged = {
-          ...fresh,
-          ...parsed,
-          stats: { ...fresh.stats, ...(parsed.stats ?? {}) },
-          parent: { ...fresh.parent, ...(parsed.parent ?? {}) },
-          settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
-        } as SaveState;
-        // A spread only fills in what is missing, so a present-but-wrong field would go
-        // straight through and throw on the first render, leaving a blank screen the kid
-        // cannot get out of (the Parent corner reset is unreachable). Take the default instead.
-        const obj = (v: unknown): boolean => !!v && typeof v === "object" && !Array.isArray(v);
-        if (!obj(merged.inventory)) merged.inventory = fresh.inventory;
-        if (!obj(merged.nicknames)) merged.nicknames = fresh.nicknames;
-        if (!obj(merged.boxesToday)) merged.boxesToday = fresh.boxesToday;
-        if (!Array.isArray(merged.log)) merged.log = fresh.log;
-        if (!Array.isArray(merged.shelf)) merged.shelf = fresh.shelf;
-        if (!Array.isArray(merged.rewardsClaimed)) merged.rewardsClaimed = fresh.rewardsClaimed;
-        if (!Array.isArray(merged.celebrated)) merged.celebrated = fresh.celebrated;
-        // A character id we don't know about (a hand-edited save, or one written by a build
-        // that had a dumpling this one doesn't) reaches the Trade screen as undefined and
-        // throws on .rarity, taking the whole tab down. Drop what we can't draw.
-        // Item keys carry the finish (c01 plain, c01x gold), so "do we know this?" is a
-        // question about the character inside the key, not the key itself. Checking the raw
-        // key against CHARACTER_BY_ID would delete every finish a kid owns on the next load.
-        const known = (key: string): boolean => {
-          const parsed = parseItem(key);
-          return !!parsed && CHARACTER_BY_ID.has(parsed.characterId);
-        };
-        for (const key of Object.keys(merged.inventory)) {
-          const n = merged.inventory[key];
-          if (!known(key) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[key];
-        }
-        merged.shelf = merged.shelf.filter(known);
-        // The buddy is spread in whole above, so a save from before the room existed has no
-        // wanders, finds or position at all. normalizeBuddy fills them in; without it the
-        // first render of an existing buddy throws and the screen goes blank.
-        merged.buddy = normalizeBuddy(merged.buddy);
-        if (merged.buddy && !CHARACTER_BY_ID.has(merged.buddy.characterId)) merged.buddy = null;
-        if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
-        if (!Array.isArray(merged.appliedDeliveries)) merged.appliedDeliveries = [];
-        latchUnlocks(merged); // saves from before the latch: bank what the collection already earns
-        if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
-        if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;
-        if (!Number.isFinite(merged.parent.dailyBoxCap) || merged.parent.dailyBoxCap < 1) merged.parent.dailyBoxCap = fresh.parent.dailyBoxCap;
-        return merged;
-      }
+    const parsed = JSON.parse(raw) as Partial<SaveState> | null;
+    if (!parsed || typeof parsed !== "object" || parsed.version !== 1) return { kind: "unreadable", raw };
+    const fresh = newState();
+    // Older saves lack newer fields; nested objects are merged so defaults fill in.
+    const merged = {
+      ...fresh,
+      ...parsed,
+      stats: { ...fresh.stats, ...(parsed.stats ?? {}) },
+      parent: { ...fresh.parent, ...(parsed.parent ?? {}) },
+      settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
+    } as SaveState;
+    // A spread only fills in what is missing, so a present-but-wrong field would go
+    // straight through and throw on the first render, leaving a blank screen the kid
+    // cannot get out of (the Parent corner reset is unreachable). Take the default instead.
+    const obj = (v: unknown): boolean => !!v && typeof v === "object" && !Array.isArray(v);
+    if (!obj(merged.inventory)) merged.inventory = fresh.inventory;
+    if (!obj(merged.nicknames)) merged.nicknames = fresh.nicknames;
+    if (!obj(merged.boxesToday)) merged.boxesToday = fresh.boxesToday;
+    if (!obj(merged.bots)) merged.bots = fresh.bots;
+    if (!obj(merged.stats)) merged.stats = fresh.stats;
+    if (!obj(merged.parent)) merged.parent = fresh.parent;
+    if (!obj(merged.settings)) merged.settings = fresh.settings;
+    if (!Array.isArray(merged.log)) merged.log = fresh.log;
+    if (!Array.isArray(merged.shelf)) merged.shelf = fresh.shelf;
+    if (!Array.isArray(merged.rewardsClaimed)) merged.rewardsClaimed = fresh.rewardsClaimed;
+    if (!Array.isArray(merged.celebrated)) merged.celebrated = fresh.celebrated;
+    // A character id we don't know about (a hand-edited save, or one written by a build
+    // that had a dumpling this one doesn't) reaches the Trade screen as undefined and
+    // throws on .rarity, taking the whole tab down. Drop what we can't draw.
+    // Item keys carry the finish (c01 plain, c01x gold), so "do we know this?" is a
+    // question about the character inside the key, not the key itself. Checking the raw
+    // key against CHARACTER_BY_ID would delete every finish a kid owns on the next load.
+    const known = (key: string): boolean => {
+      const item = parseItem(key);
+      return !!item && CHARACTER_BY_ID.has(item.characterId);
+    };
+    for (const key of Object.keys(merged.inventory)) {
+      const n = merged.inventory[key];
+      if (!known(key) || !Number.isFinite(n) || (n as number) <= 0) delete merged.inventory[key];
     }
+    merged.shelf = merged.shelf.filter(known);
+    // The buddy is spread in whole above, so a save from before the room existed has no
+    // wanders, finds or position at all. normalizeBuddy fills them in; without it the
+    // first render of an existing buddy throws and the screen goes blank.
+    merged.buddy = normalizeBuddy(merged.buddy);
+    if (merged.buddy && !CHARACTER_BY_ID.has(merged.buddy.characterId)) merged.buddy = null;
+    if (!Array.isArray(merged.unlockedSeries)) merged.unlockedSeries = [];
+    if (!Array.isArray(merged.appliedDeliveries)) merged.appliedDeliveries = [];
+    latchUnlocks(merged); // saves from before the latch: bank what the collection already earns
+    if (!Number.isFinite(merged.coins)) merged.coins = fresh.coins;
+    if (!Number.isFinite(merged.pity)) merged.pity = fresh.pity;
+    if (!Number.isFinite(merged.parent.dailyBoxCap) || merged.parent.dailyBoxCap < 1) merged.parent.dailyBoxCap = fresh.parent.dailyBoxCap;
+    // A save from before the counter existed is still older than nothing at all: start it
+    // at 1 so it always outranks a state nobody has played.
+    merged.rev = Number.isFinite(parsed.rev) && (parsed.rev as number) >= 0 ? Math.floor(parsed.rev as number) : 1;
+    return { kind: "ok", state: merged };
   } catch {
-    /* corrupt or unavailable storage: start fresh */
+    return { kind: "unreadable", raw };
   }
-  return newState();
+}
+
+/** The stored save, or a new game when there is none or it cannot be read. */
+export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
+  let raw: string | null = null;
+  try {
+    raw = storage?.getItem(SAVE_KEY) ?? null;
+  } catch {
+    /* storage unavailable */
+  }
+  const read = readSave(raw);
+  return read.kind === "ok" ? read.state : newState();
 }
 
 /**
@@ -609,7 +642,7 @@ export function loadState(storage: Pick<Storage, "getItem"> | null): SaveState {
 export function saveState(storage: Pick<Storage, "setItem"> | null, state: SaveState): boolean {
   if (!storage) return false;
   try {
-    storage.setItem(KEY, JSON.stringify(state));
+    storage.setItem(SAVE_KEY, JSON.stringify(state));
     return true;
   } catch {
     return false; // quota, private mode, or the webview evicted our storage
@@ -618,7 +651,7 @@ export function saveState(storage: Pick<Storage, "setItem"> | null, state: SaveS
 
 export function resetState(storage: Pick<Storage, "removeItem"> | null): void {
   try {
-    storage?.removeItem(KEY);
+    storage?.removeItem(SAVE_KEY);
   } catch {
     /* ignore */
   }
