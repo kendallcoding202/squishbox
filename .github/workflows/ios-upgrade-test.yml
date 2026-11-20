@@ -112,7 +112,8 @@ jobs:
           - { id: blind-first-launch-sdk27, runtime: latest, steps: "old-sdk27 fix-sdk27-blind" }
           - { id: blind-first-launch-sdk26, runtime: latest, steps: "old-sdk27 v14-sdk26 fix-sdk26-blind" }
           # The web view's storage lost outright after the fix has run once.
-          - { id: fix-survives-a-wipe, runtime: latest, steps: "old-sdk27 fix-sdk27 WIPE fix-sdk27" }
+          - { id: fix-survives-a-wipe-sdk27, runtime: latest, steps: "old-sdk27 fix-sdk27 WIPE fix-sdk27" }
+          - { id: fix-survives-a-wipe-sdk26, runtime: latest, steps: "old-sdk27 fix-sdk26 WIPE fix-sdk26" }
           # A new player: nothing saved anywhere, no web view folder for the launch-time read to find.
           - { id: new-player, runtime: latest, steps: "fix-sdk27 fix-sdk26" }
     steps:

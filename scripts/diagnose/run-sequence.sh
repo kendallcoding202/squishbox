@@ -46,29 +46,39 @@ for item in "$@"; do
   plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$app/Info.plist" 2>/dev/null || echo "?"; }
   echo "=== step $step: install and run $item  [$(plist CFBundleShortVersionString) ($(plist CFBundleVersion)), built with Xcode $(plist DTXcode), SDK $(plist DTSDKName) $(plist DTSDKBuild)]"
   xcrun simctl install "$udid" "$app"
+  probed=yes; grep -q "DIAG" "$app/public/index.html" || probed=no
   for launch in first second; do
-    : > "$work/console.txt"
-    # A PTY, so the app's output arrives line by line instead of dying in a buffer.
-    xcrun simctl launch --console-pty "$udid" "$bundle" > "$work/console.txt" 2>&1 &
-    console=$!
-    marks="6 25"; if [ "$launch" = "second" ]; then marks="12"; fi
-    waited=0
-    for at in $marks; do
-      sleep $((at - waited)); waited=$at
-      shot="shots/$step-$item-$launch-${at}s.png"
-      xcrun simctl io "$udid" screenshot "$shot" >/dev/null 2>&1 || true
-      size=$(stat -f %z "$shot" 2>/dev/null || echo 0)
-      seen="drawn"; if [ "$size" -lt 250000 ]; then seen="not drawn yet, or not in front"; fi
-      text=""; if [ -x "$work/ocr" ] && [ -f "$shot" ]; then text=$("$work/ocr" "$shot" 2>/dev/null | cut -c1-150 || true); fi
-      echo "  $launch launch, ${at}s in: $seen ($size bytes) $text"
+    # Hosted simulators are slow and sometimes never start the page at all. Wait for the page
+    # to report rather than for a number of seconds, and launch again if it never does, so
+    # that a stalled simulator is reported as a stall and not mistaken for a result.
+    spoke=no
+    for attempt in 1 2 3; do
+      : > "$work/console.txt"
+      # A PTY, so the app's output arrives line by line instead of dying in a buffer.
+      xcrun simctl launch --console-pty "$udid" "$bundle" > "$work/console.txt" 2>&1 &
+      console=$!
+      waited=0
+      while [ "$waited" -lt 75 ]; do
+        if grep -aq "DIAG.*at 2000ms screen\|Welcome\|WebView loaded" "$work/console.txt" && { grep -aq "DIAG.*at 2000ms screen" "$work/console.txt" || [ "$probed" = "no" ]; }; then spoke=yes; break; fi
+        sleep 3; waited=$((waited + 3))
+      done
+      if [ "$spoke" = "yes" ]; then break; fi
+      echo "  $launch launch, attempt $attempt: the page had not started after ${waited}s ($(grep -ac 'process terminated' "$work/console.txt") web view process terminations); launching again"
+      xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+      kill "$console" >/dev/null 2>&1 || true
+      wait "$console" 2>/dev/null || true
+      sleep 5
     done
+    sleep 6 # long enough for the phone's copy to be read and reported
+    shot="shots/$step-$item-$launch.png"
+    xcrun simctl io "$udid" screenshot "$shot" >/dev/null 2>&1 || true
+    text=""; if [ -x "$work/ocr" ] && [ -f "$shot" ]; then text=$("$work/ocr" "$shot" 2>/dev/null | cut -c1-110 || true); fi
+    echo "  $launch launch (page started: $spoke, after ${waited}s): on screen: $text"
     xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
     kill "$console" >/dev/null 2>&1 || true
     wait "$console" 2>/dev/null || true
-    echo "  what the $launch launch said:"
-    grep -a "DIAG" "$work/console.txt" | grep -a "page start\|at start\|at 2000ms screen\|vault\|ERROR\|REJECTION\|THREW" | sed 's/.*DIAG /    /' | cut -c1-230 | head -n 14 || true
-    if ! grep -aq "DIAG" "$work/console.txt"; then echo "    (the page never spoke: $(wc -c < "$work/console.txt" | tr -d ' ') bytes of console in all)"; tail -n 5 "$work/console.txt" | cut -c1-200 | sed 's/^/    | /'; fi
-    sleep 3
+    grep -a "DIAG" "$work/console.txt" | grep -a "at start\|at 2000ms screen\|vault\|ERROR\|REJECTION\|THREW" | sed 's/.*DIAG /    /' | cut -c1-200 | head -n 12 || true
+    sleep 6
   done
   data=$(xcrun simctl get_app_container "$udid" "$bundle" data)
   sleep 4 # preferences reach the disk a moment after the app has gone
