@@ -5,3 +5,4 @@ dist/
 server/dist/
 server/*.db
 server/*.db-*
+__pycache__/

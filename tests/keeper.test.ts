@@ -343,6 +343,8 @@ describe("starting again on purpose", () => {
     const vault = new FakeVault();
     const k = make(local, vault);
     await k.ready; await tick();
+    for (let i = 0; i < 12; i++) k.write(); // a collection that has been played, so its count is well past a new game's
+    await k.flushed();
     vault.failWrites = true; // the old collection stays in the vault
     k.reset();
     await k.flushed();
