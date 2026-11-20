@@ -6,6 +6,7 @@
  *   node scripts/asc.mjs prepare --version 1.5 --build 13 [--dry-run]
  *   node scripts/asc.mjs submit  --version 1.5 [--dry-run]
  *   node scripts/asc.mjs withdraw --version 1.5 [--dry-run]
+ *   node scripts/asc.mjs promo [--dry-run]
  *
  * `status` only reads. `prepare` makes a version ready to send: it creates the version
  * record if there is none, attaches the build, sets the release notes, and replaces the
@@ -231,6 +232,50 @@ async function readText(name) {
   }
 }
 
+/** The store refuses promotional text longer than this. */
+export const PROMO_MAX = 170;
+
+/**
+ * The promotional line for a given day: the seasonal one while its window is open, the
+ * evergreen one otherwise. Windows are month and day, inclusive, and may wrap the new year,
+ * the same as the game's own (src/data/characters.ts; a test holds the two together).
+ *
+ * This is the one piece of store text that can change on a live version, so it is where a
+ * seasonal run is announced — and it is the text that went stale last time, still saying
+ * "until November 1st" on the 19th. Deriving it from the date means the off-switch cannot
+ * be forgotten: any run after the window shuts puts the evergreen line back.
+ */
+export function promoFor(date, evergreen, seasonal) {
+  const md = (m, d) => m * 100 + d;
+  const today = md(date.getUTCMonth() + 1, date.getUTCDate());
+  const open = (seasonal ?? []).find((s) => {
+    const from = md(s.from.month, s.from.day);
+    const to = md(s.to.month, s.to.day);
+    return from <= to ? today >= from && today <= to : today >= from || today <= to;
+  });
+  const text = (open ? open.text : evergreen ?? "").trim();
+  if (text.length > PROMO_MAX) throw new Error(`Promotional text is ${text.length} characters; the store allows ${PROMO_MAX}.`);
+  return text || null;
+}
+
+async function promoToday() {
+  let seasonal = [];
+  try {
+    seasonal = JSON.parse(await readFile(join(ROOT, "store", "metadata", "promotional-seasonal.json"), "utf8"));
+  } catch { /* no seasonal lines: the evergreen one always applies */ }
+  return promoFor(new Date(), await readText("promotional-text.txt"), seasonal);
+}
+
+/**
+ * The versions the store is showing or about to show: the live one, and anything newer that
+ * is being prepared or reviewed. Older versions report the same state as the live one, so
+ * "live" is the newest of them, not all of them.
+ */
+export function currentVersions(sortedNewestFirst, stateFn) {
+  const liveAt = sortedNewestFirst.findIndex((v) => ["READY_FOR_DISTRIBUTION", "READY_FOR_SALE"].includes(stateFn(v)));
+  return liveAt === -1 ? sortedNewestFirst.slice(0, 1) : sortedNewestFirst.slice(0, liveAt + 1);
+}
+
 /**
  * The release notes for one version, out of a file whose first line says which version it
  * was written for ("# 1.5"). Stale metadata is the mistake this project keeps making — the
@@ -434,7 +479,7 @@ async function prepare(appId, { version, build, dryRun }) {
   if (!loc) throw new Error(`Version ${version} has no localization to put release notes on`);
   const attributes = {};
   const whatsNew = notesFor(await readText("whats-new.txt"), version);
-  const promo = await readText("promotional-text.txt");
+  const promo = await promoToday();
   if (whatsNew !== loc.attributes.whatsNew) attributes.whatsNew = whatsNew;
   if (promo && promo !== loc.attributes.promotionalText) attributes.promotionalText = promo;
   for (const [key, value] of Object.entries(attributes)) console.log(`${key}: ${say} set (${value.length} characters)`);
@@ -539,6 +584,28 @@ async function withdraw(appId, { version, dryRun }) {
   throw new Error(`Asked Apple to withdraw version ${version}, but three minutes later it had still not left review. Check App Store Connect before doing anything else.`);
 }
 
+/**
+ * Put today's promotional line on the store. Needs no build and no review: it applies to the
+ * live version at once, and to any newer version so a release in flight does not undo it.
+ */
+async function promo(appId, { dryRun }) {
+  const text = await promoToday();
+  if (!text) throw new Error("There is no promotional text to set: store/metadata/promotional-text.txt is missing or empty.");
+  console.log(`Today's line (${text.length} characters): ${text}`);
+  for (const version of currentVersions(await versions(appId), stateOf)) {
+    const label = `${version.attributes.versionString} (${stateOf(version)})`;
+    const loc = await localization(version.id);
+    if (!loc) { console.log(`  ${label}: no localization, skipped`); continue; }
+    if (loc.attributes.promotionalText === text) { console.log(`  ${label}: already set`); continue; }
+    console.log(`  ${label}: ${dryRun ? "would change" : "changing"} from: ${loc.attributes.promotionalText ?? "(empty)"}`);
+    if (dryRun) continue;
+    await api("PATCH", `/v1/appStoreVersionLocalizations/${loc.id}`, { data: { type: "appStoreVersionLocalizations", id: loc.id, attributes: { promotionalText: text } } });
+    const after = await localization(version.id);
+    if (after?.attributes.promotionalText !== text) throw new Error(`${label}: the store does not show the new line after writing it`);
+    console.log(`  ${label}: set, confirmed on a re-read`);
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const appId = process.env.ASC_APP_ID || DEFAULT_APP_ID;
@@ -546,7 +613,8 @@ async function main() {
   if (opts.command === "prepare") return prepare(appId, opts);
   if (opts.command === "submit") return submit(appId, opts);
   if (opts.command === "withdraw") return withdraw(appId, opts);
-  throw new Error("Usage: node scripts/asc.mjs status | prepare --version V --build N [--dry-run] | submit --version V [--dry-run] | withdraw --version V [--dry-run]");
+  if (opts.command === "promo") return promo(appId, opts);
+  throw new Error("Usage: node scripts/asc.mjs status | prepare --version V --build N [--dry-run] | submit --version V [--dry-run] | withdraw --version V [--dry-run] | promo [--dry-run]");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

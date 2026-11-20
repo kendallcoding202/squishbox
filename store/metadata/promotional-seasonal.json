@@ -1,0 +1,14 @@
+[
+  {
+    "series": "s3",
+    "from": { "month": 10, "day": 18 },
+    "to": { "month": 11, "day": 1 },
+    "text": "Eight spooky dumplings are in the steamer until November 1st. Catch them all and they're yours for every Halloween after."
+  },
+  {
+    "series": "s4",
+    "from": { "month": 12, "day": 1 },
+    "to": { "month": 1, "day": 5 },
+    "text": "The Snowy Steamer is open: eight frosty dumplings to catch until January 5th. They come back every winter, and what you catch is yours to keep."
+  }
+]

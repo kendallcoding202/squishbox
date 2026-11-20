@@ -6,6 +6,8 @@ name: App Store
 #   prepare  creates the version if needed, attaches the build, sets the release notes and
 #            replaces the screenshots with store/screenshots/.
 #   submit   sends a prepared version to review. The one step that cannot be taken back.
+#   promo    puts today's promotional line on the live listing: the seasonal one while its
+#            window is open, the evergreen one otherwise. No build, no review.
 #   withdraw takes a version back out of review so its build can be swapped. It loses its
 #            place in the queue.
 #
@@ -16,7 +18,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [status, prepare, submit, withdraw]
+        options: [status, prepare, submit, withdraw, promo]
         default: status
       version:
         description: Marketing version, e.g. 1.5 (prepare and submit)

@@ -31,6 +31,7 @@ Nothing runs on a push. Every step is a button, and only step 3 cannot be taken 
 | Rehearse | App Store | `action: prepare`, `version`, `build`, `dry_run: true` |
 | Prepare | App Store | `action: prepare`, `version`, `build` |
 | Submit | App Store | `action: submit`, `version` |
+| Promotional line | App Store | `action: promo` |
 
 After the upload Apple processes the build for a few minutes. `prepare` waits for it, up to
 twenty minutes, so it can be started straight after the upload finishes.
@@ -42,6 +43,12 @@ place in the queue, so upload and check the replacement build first.
 and only changes what differs, so a run that died half way is fixed by running it again.
 `submit` checks the screenshots and notes one last time and refuses if they are not the
 committed ones.
+
+`promo` needs no build and no review. It puts today's promotional line on the live listing:
+the seasonal one from `store/metadata/promotional-seasonal.json` while its window is open, and
+`store/metadata/promotional-text.txt` otherwise. Run it on the day a seasonal set opens and
+again the day after it shuts. A new seasonal set needs a line in that file; a test fails if
+one is missing or its dates differ from the game's.
 
 The same script runs locally: `node scripts/asc.mjs status` with the three `ASC_*` variables
 set.

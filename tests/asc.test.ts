@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 // The release script is plain .mjs so CI can run it with nothing installed. Loaded through a
 // variable so the type checker does not go looking for declarations it does not have.
+interface SeasonalLine { series?: string; from: { month: number; day: number }; to: { month: number; day: number }; text: string }
+
 const scriptPath = "../scripts/asc.mjs";
 const asc = (await import(/* @vite-ignore */ scriptPath)) as {
   familyOf(displayType: string): { id: string } | null;
@@ -15,6 +17,9 @@ const asc = (await import(/* @vite-ignore */ scriptPath)) as {
   FAMILIES: { id: string; createAs: string }[];
   SUBMITTABLE: string[];
   WITHDRAWABLE: string[];
+  PROMO_MAX: number;
+  promoFor(date: Date, evergreen: string | null, seasonal: SeasonalLine[] | null): string | null;
+  currentVersions<V>(sorted: V[], stateFn: (v: V) => string): V[];
   parseArgs(argv: string[]): { command: string; dryRun: boolean; version?: string; build?: string };
 };
 
@@ -131,5 +136,64 @@ describe("release script: signing in and arguments", () => {
     expect(asc.parseArgs(["prepare", "--version", "1.5", "--build", "13", "--dry-run"])).toEqual({ command: "prepare", dryRun: true, version: "1.5", build: "13" });
     expect(asc.parseArgs(["status"])).toEqual({ command: "status", dryRun: false });
     expect(() => asc.parseArgs(["submit", "--force"])).toThrow(/Unknown argument/);
+  });
+});
+
+describe("release script: the promotional line", () => {
+  const evergreen = "Evergreen line.";
+  const seasonal: SeasonalLine[] = [
+    { from: { month: 10, day: 18 }, to: { month: 11, day: 1 }, text: "Spooky line." },
+    { from: { month: 12, day: 1 }, to: { month: 1, day: 5 }, text: "Frosty line." },
+  ];
+  const on = (iso: string) => new Date(`${iso}T12:00:00Z`);
+
+  it("is the seasonal line inside a window and the evergreen one outside", () => {
+    expect(asc.promoFor(on("2026-11-20"), evergreen, seasonal)).toBe("Evergreen line.");
+    expect(asc.promoFor(on("2026-11-30"), evergreen, seasonal)).toBe("Evergreen line.");
+    expect(asc.promoFor(on("2026-12-01"), evergreen, seasonal)).toBe("Frosty line.");
+    expect(asc.promoFor(on("2027-01-05"), evergreen, seasonal)).toBe("Frosty line."); // the far side of the new year
+    expect(asc.promoFor(on("2027-01-06"), evergreen, seasonal)).toBe("Evergreen line.");
+    expect(asc.promoFor(on("2027-10-18"), evergreen, seasonal)).toBe("Spooky line.");
+  });
+
+  it("goes back to evergreen by itself the day after a run ends", () => {
+    // The Halloween line stayed up until 19 November because taking it down was a thing to
+    // remember. Any run after the window now puts the evergreen line back.
+    expect(asc.promoFor(on("2026-11-01"), evergreen, seasonal)).toBe("Spooky line.");
+    expect(asc.promoFor(on("2026-11-02"), evergreen, seasonal)).toBe("Evergreen line.");
+  });
+
+  it("refuses a line the store would reject, and copes with nothing to say", () => {
+    expect(() => asc.promoFor(on("2026-06-01"), "x".repeat(asc.PROMO_MAX + 1), [])).toThrow(/allows 170/);
+    expect(asc.promoFor(on("2026-06-01"), null, null)).toBeNull();
+    expect(asc.promoFor(on("2026-06-01"), evergreen, null)).toBe("Evergreen line.");
+  });
+
+  it("has committed lines that fit, and windows that match the game's own seasons", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { SERIES } = await import("../src/data/characters");
+    const lines = JSON.parse(await readFile(new URL("../store/metadata/promotional-seasonal.json", import.meta.url), "utf8")) as SeasonalLine[];
+    const evergreenText = (await readFile(new URL("../store/metadata/promotional-text.txt", import.meta.url), "utf8")).trim();
+    expect(evergreenText.length).toBeGreaterThan(0);
+    expect(evergreenText.length).toBeLessThanOrEqual(asc.PROMO_MAX);
+    const seasons = SERIES.filter((s) => s.season);
+    expect(lines.length).toBe(seasons.length); // a seasonal set with no line would open unannounced
+    for (const s of seasons) {
+      const line = lines.find((l) => l.series === s.id);
+      expect(line, s.id).toBeDefined();
+      expect(line!.from).toEqual(s.season!.from);
+      expect(line!.to).toEqual(s.season!.to);
+      expect(line!.text.length, s.id).toBeLessThanOrEqual(asc.PROMO_MAX);
+    }
+  });
+
+  it("changes the live version and anything newer, never the ones it replaced", () => {
+    const v = (name: string, state: string) => ({ name, state });
+    const stateFn = (x: { state: string }) => x.state;
+    const names = (list: { name: string }[]) => list.map((x) => x.name);
+    // Old versions report the same state as the live one, so "live" is the newest of them.
+    expect(names(asc.currentVersions([v("1.4", "READY_FOR_DISTRIBUTION"), v("1.3", "READY_FOR_DISTRIBUTION"), v("1.2", "READY_FOR_DISTRIBUTION")], stateFn))).toEqual(["1.4"]);
+    expect(names(asc.currentVersions([v("1.5", "WAITING_FOR_REVIEW"), v("1.4", "READY_FOR_DISTRIBUTION"), v("1.3", "READY_FOR_DISTRIBUTION")], stateFn))).toEqual(["1.5", "1.4"]);
+    expect(names(asc.currentVersions([v("1.0", "PREPARE_FOR_SUBMISSION")], stateFn))).toEqual(["1.0"]);
   });
 });
