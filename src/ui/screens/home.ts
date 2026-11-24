@@ -7,7 +7,7 @@ import { describeOdds } from "../../game/odds";
 import { systemRng } from "../../game/rng";
 import {
   boxesOpenedToday, canClaimDaily, claimDaily, claimReward, dayKey, displayName, effectiveNow, luckyNext, openBox, ownedCoreCount, ownedCount, ownedInSeries,
-  markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
+  markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, shownFinish, type OpenResult, visitBuddy} from "../../game/state";
 import { announce, confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
 import { artImg, boxArt } from "../art";
@@ -358,7 +358,7 @@ function buddySection(): HTMLElement | null {
   const today = effectiveNow(s, new Date());
   const next = nextMilestone(b);
   const done = reached(b);
-  const art = dumplingEl(c, 96, { idle: true });
+  const art = dumplingEl(c, 96, { idle: true, finish: shownFinish(s.inventory, c.id) });
   const card = h("div", { class: "card buddy-card tappable", role: "button", tabindex: "0", "aria-label": `${displayName(s, c.id)}, open details` },
     h("div", { class: "row", style: "gap:14px;align-items:center" },
       art,

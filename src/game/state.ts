@@ -157,6 +157,22 @@ export function ownedCharacterIds(inv: Inventory): Set<string> {
   return out;
 }
 
+/** Whether any copy of a character is in the basket, in any finish. */
+export function ownsCharacter(inv: Inventory, characterId: string): boolean {
+  for (const [key, n] of Object.entries(inv)) if (n > 0 && characterIdOf(key) === characterId) return true;
+  return false;
+}
+
+/**
+ * Which copy of a character to show it as: the plain one if there is one, otherwise the
+ * rarest finish owned. A kid whose only Sprout is glittery should see a glittery buddy.
+ */
+export function shownFinish(inv: Inventory, characterId: string): Finish {
+  if ((inv[characterId] ?? 0) > 0) return "plain";
+  for (const f of ["gold", "rainbow", "glitter"] as const) if ((inv[itemKey(characterId, f)] ?? 0) > 0) return f;
+  return "plain";
+}
+
 export function ownedInSeries(inv: Inventory, id: SeriesId): number {
   const owned = ownedCharacterIds(inv);
   return charactersInSeries(id).filter((c) => owned.has(c.id)).length;
@@ -241,7 +257,9 @@ export function takeNewUnlocks(state: SaveState): SeriesId[] {
  */
 export function chooseBuddy(state: SaveState, characterId: string, now: Date): boolean {
   if (!CHARACTER_BY_ID.has(characterId)) return false;
-  if ((state.inventory[characterId] ?? 0) < 1) return false;
+  // Any finish counts. Checking the plain key alone refused every dumpling a kid owned only
+  // as glitter, rainbow or gold, while the button still said it had worked.
+  if (!ownsCharacter(state.inventory, characterId)) return false;
   if (state.buddy?.characterId === characterId) return false;
   state.buddy = newBuddy(characterId, effectiveNow(state, now).getTime());
   log(state, "buddy", `${CHARACTER_BY_ID.get(characterId)?.name} is my buddy now`, now.getTime());
@@ -263,7 +281,7 @@ export function visitBuddy(state: SaveState, now: Date, pick: number): boolean {
   if (!state.buddy) return false;
   const today = effectiveNow(state, now);
   // A buddy that has been sold or traded away stops being the buddy, quietly.
-  if ((state.inventory[state.buddy.characterId] ?? 0) < 1) { state.buddy = null; return false; }
+  if (!ownsCharacter(state.inventory, state.buddy.characterId)) { state.buddy = null; return false; }
   const first = recordVisit(state.buddy, dayKey(today), pick);
   if (first) markClockSeenExported(state, today);
   return first;

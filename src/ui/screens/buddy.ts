@@ -7,7 +7,7 @@ import {
   pickStable, placeUnlocked, SPOT_BY_ID, spotsIn, visitorsFor, type Find, type Lane, type Spot,
 } from "../../game/room";
 import { systemRng } from "../../game/rng";
-import { dayKey, displayName, effectiveNow, ownedCount, seriesUnlocked, takeBuddyGift, type SaveState } from "../../game/state";
+import { dayKey, displayName, effectiveNow, ownedCount, seriesUnlocked, shownFinish, takeBuddyGift, type SaveState } from "../../game/state";
 import { confetti, h, hearts, onTap, toast } from "../dom";
 import { artImg, propArt, roomArt } from "../art";
 import { dumplingEl } from "../dumpling";
@@ -136,7 +136,7 @@ export function renderBuddy(): HTMLElement {
   const today = effectiveNow(s, new Date());
 
   const name = displayName(s, c.id);
-  const art = dumplingEl(c, 132, { idle: true, fullSquish: true });
+  const art = dumplingEl(c, 132, { idle: true, fullSquish: true, finish: shownFinish(s.inventory, c.id) });
   const actor = h("div", { class: "buddy-actor" }, art);
   const stage = h("div", { class: "buddy-stage" }, actor);
 

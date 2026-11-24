@@ -92,9 +92,11 @@ export function detail(c: Character, startFinish?: Finish): void {
     ) : null;
 
     const buddyBtn = s.parent.buddyEnabled ? h("button", { class: "btn sm" + (isBuddy ? " secondary" : ""), onclick: () => {
-      store.update((st) => { if (isBuddy) setBuddyAside(st, new Date()); else chooseBuddy(st, c.id, new Date()); });
+      let chosen = true;
+      store.update((st) => { if (isBuddy) setBuddyAside(st, new Date()); else chosen = chooseBuddy(st, c.id, new Date()); });
       haptic("light");
-      toast(isBuddy ? `${c.name} went back in the basket` : `${c.name} is your buddy!`);
+      // Only say it worked when it did: the toast used to cheer even when the choice was refused.
+      toast(isBuddy ? `${c.name} went back in the basket` : chosen ? `${c.name} is your buddy!` : `${c.name} can't be your buddy right now`);
       swap();
     } }, isBuddy ? "Not my buddy any more" : "\u{1F49B} Make my buddy") : null;
 

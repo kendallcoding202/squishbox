@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decorations, hasOwnVoice, MILESTONES, MOMENTS, momentText, newBuddy, nextMilestone, reached, recordVisit, tricks } from "../src/game/buddy";
-import { chooseBuddy, newState, setBuddyAside, visitBuddy } from "../src/game/state";
+import { chooseBuddy, newState, setBuddyAside, shownFinish, visitBuddy } from "../src/game/state";
 
 const day = (s: string) => new Date(`${s}T10:00:00`);
 const owning = (id: string) => {
@@ -214,5 +214,51 @@ describe("the room", () => {
     const b = at(21);
     const kinds = tricks(b).length + decorations(b).length + (hasOwnVoice(b) ? 1 : 0);
     expect(kinds).toBe(reached(b).length);
+  });
+});
+
+describe("a buddy owned only in a finish", () => {
+  // A kid reported they could not swap buddies: the dumpling they picked was glittery, and
+  // only the plain copy was being counted, while the button said it had worked.
+  it("can be chosen, and swapped to, when the only copy is glitter, rainbow or gold", () => {
+    for (const key of ["u02g", "u02r", "u02x"]) {
+      const s = newState();
+      s.inventory = { c01: 1, [key]: 1 };
+      expect(chooseBuddy(s, "c01", day("2026-09-07"))).toBe(true);
+      setBuddyAside(s, day("2026-09-07"));
+      expect(chooseBuddy(s, "u02", day("2026-09-07"))).toBe(true);
+      expect(s.buddy?.characterId).toBe("u02");
+    }
+  });
+
+  it("stays the buddy on the next visit, and is shown in the finish the kid has", () => {
+    const s = newState();
+    s.inventory = { "3r01g": 1 };
+    chooseBuddy(s, "3r01", day("2026-09-07"));
+    visitBuddy(s, day("2026-09-08"), 0);
+    expect(s.buddy?.characterId).toBe("3r01");
+    expect(shownFinish(s.inventory, "3r01")).toBe("glitter");
+    s.inventory["3r01x"] = 1;
+    expect(shownFinish(s.inventory, "3r01")).toBe("gold");
+    s.inventory["3r01"] = 1;
+    expect(shownFinish(s.inventory, "3r01")).toBe("plain");
+  });
+
+  it("stops being the buddy only once no copy of it is left", () => {
+    const s = newState();
+    s.inventory = { u02: 1, u02g: 1 };
+    chooseBuddy(s, "u02", day("2026-09-07"));
+    s.inventory.u02 = 0; // the plain one sold or traded away
+    visitBuddy(s, day("2026-09-08"), 0);
+    expect(s.buddy?.characterId).toBe("u02");
+    s.inventory.u02g = 0;
+    visitBuddy(s, day("2026-09-09"), 0);
+    expect(s.buddy).toBeNull();
+  });
+
+  it("still cannot be something the kid does not have", () => {
+    const s = newState();
+    s.inventory = { c01: 1 };
+    expect(chooseBuddy(s, "u02", day("2026-09-07"))).toBe(false);
   });
 });
