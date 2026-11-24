@@ -10,6 +10,7 @@ import {
   markCelebrated, pendingUnlocks, PITY_AT, rewardsForSeries, rewardStatus, seriesUnlocked, seriesUnlockProgress, type OpenResult, visitBuddy} from "../../game/state";
 import { announce, confetti, h, onTap, overlay, toast } from "../dom";
 import { detail } from "./collection";
+import { artImg, boxArt } from "../art";
 import { dumplingEl } from "../dumpling";
 import { coin, crinkle, haptic, lidLift, pop, reveal as revealSound, shimmer, soundEnabled, thud } from "../sound";
 import { store } from "../store";
@@ -55,6 +56,12 @@ function oddsTable(box: Box): HTMLElement {
   );
 }
 
+/** A basket's painting, or its emoji where it has none. */
+function boxPicture(box: Box, cls: string): HTMLElement {
+  const url = boxArt(box.id);
+  return url ? h("div", { class: `${cls} painted` }, artImg(url, "box-art")) : h("div", { class: cls }, box.emoji);
+}
+
 function boxCard(box: Box): HTMLElement {
   const s = store.state;
   const today = new Date();
@@ -69,7 +76,7 @@ function boxCard(box: Box): HTMLElement {
   }, capped ? "Done for today" : short > 0 ? `Need ${short} more` : lucky ? `Lucky open! · ${box.price}` : `Open · ${box.price}`);
   return h("div", { class: "card box-card" },
     h("div", { class: "row" },
-      h("div", { class: "emoji" }, box.emoji),
+      boxPicture(box, "emoji"),
       h("div", { class: "grow" }, h("h3", null, box.name), h("p", { class: "muted small" }, box.tagline)),
       h("span", { class: "pill" }, `${box.price} coins`),
     ),
@@ -91,7 +98,10 @@ export function startOpen(box: Box): void {
   let taps = 0;
   const dots = [0, 1, 2].map(() => h("i", { "aria-hidden": "true" }));
   const glow = h("div", { class: "glow", "aria-hidden": "true", style: `background:${info.glow}` });
-  const mystery = h("div", { class: "mystery", role: "button", "aria-label": "Squish the box", tabindex: "0" }, box.emoji);
+  const mystery = boxPicture(box, "mystery");
+  mystery.setAttribute("role", "button");
+  mystery.setAttribute("aria-label", "Squish the box");
+  mystery.setAttribute("tabindex", "0");
   const steam = h("div", { class: "steam", "aria-hidden": "true" });
   const stage = h("div", { class: "reveal-stage" }, glow, steam, mystery);
   const title = h("h2", { style: "margin:6px 0 0" }, result.lucky ? "Lucky box!" : "Squish it!");

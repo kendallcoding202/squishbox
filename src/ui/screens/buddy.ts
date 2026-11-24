@@ -9,6 +9,7 @@ import {
 import { systemRng } from "../../game/rng";
 import { dayKey, displayName, effectiveNow, ownedCount, seriesUnlocked, takeBuddyGift, type SaveState } from "../../game/state";
 import { confetti, h, hearts, onTap, toast } from "../dom";
+import { artImg, propArt, roomArt } from "../art";
 import { dumplingEl } from "../dumpling";
 import { coin, haptic, squeak, success } from "../sound";
 import { store } from "../store";
@@ -145,6 +146,20 @@ export function renderBuddy(): HTMLElement {
   const here = placeOf(bud);
   const spots = spotsIn(here.id);
 
+  // What a prop shows: its painting where there is one, its emoji where there is not. The
+  // bowl and the cup each have a full and an empty painting, so filling one is something
+  // you can see rather than only read about.
+  const showProp = (el: HTMLElement, spot: Spot): void => {
+    const full = spot.fillable ? bud[spot.fillable] : false;
+    const url = (full ? propArt(`${spot.id}-full`) : null) ?? propArt(spot.id);
+    if (url) {
+      el.replaceChildren(artImg(url, "prop-art"));
+      el.classList.add("painted");
+    } else if (!spot.seat) {
+      el.textContent = full && spot.fillable === "bowl" ? "\u{1F95F}" : spot.glyph;
+    }
+  };
+
   const props = spots
     .filter((spot) => spot.seat || spot.glyph)
     .map((spot) => {
@@ -156,7 +171,8 @@ export function renderBuddy(): HTMLElement {
         "aria-label": spot.fillable
           ? `${spot.fillable === "bowl" ? "Bowl. Tap to put some food out." : "Cup. Tap to pour a drink."}`
           : `${spot.id}. Tap to send ${name} over.`,
-      }, seat ? null : spot.glyph);
+      });
+      showProp(el, spot);
       return { spot, el };
     });
   const propEl = (id: string): HTMLElement | null => props.find((pr) => pr.spot.id === id)?.el ?? null;
@@ -194,10 +210,18 @@ export function renderBuddy(): HTMLElement {
     .filter(Boolean) as { bot: Bot; guest: Character; el: HTMLElement; spot: Spot }[];
 
   const floor = h("div", { class: "room-floor" }, ...props.map((pr) => pr.el), ...visitors.map((v) => v.el), stage);
-  const room = h("div", { class: `room place-${here.id}` },
+  const backdrop = roomArt(here.id);
+  const windowArt = propArt("window");
+  const room = h("div", {
+    class: `room place-${here.id}${backdrop ? " painted" : ""}`,
+    // Placed so the wall/floor line in the painting (43% down, see scripts/art/finish.mjs)
+    // stays on the layout's own line on a narrow phone and a wide iPad alike.
+    style: backdrop ? `background-image:url("${backdrop}")` : null,
+  },
     h("div", { class: "room-wall" },
       here.id === "room"
-        ? h("div", { class: "window", style: `left:${(SPOT_BY_ID.get("window") as Spot).x}%` }, h("i", { class: "sun" }), h("i", { class: "cloud" }))
+        ? h("div", { class: `window${windowArt ? " painted" : ""}`, style: `left:${(SPOT_BY_ID.get("window") as Spot).x}%` },
+          ...(windowArt ? [artImg(windowArt, "prop-art")] : [h("i", { class: "sun" }), h("i", { class: "cloud" })]))
         : null,
       here.id === "room" && shelfItems.length ? shelf : null,
     ),
@@ -232,9 +256,9 @@ export function renderBuddy(): HTMLElement {
     // look exactly the same, and putting food out stops meaning anything.
     const helpingItself = (spot.fillable === "bowl" && bud.bowl) || (spot.fillable === "cup" && bud.cup);
     const find = arrive(bud, spot.id);
-    if (spot.fillable === "bowl") {
+    if (spot.fillable) {
       const el = propEl(spot.id);
-      if (el) el.textContent = bud.bowl ? "\u{1F95F}" : spot.glyph;
+      if (el) showProp(el, spot);
     }
     store.persist(); // never update(): see the note at the top of this file
     tell(helpingItself ? `${name} is tucking in. Thank you!` : spotLine(spot));
@@ -298,7 +322,7 @@ export function renderBuddy(): HTMLElement {
       if (bud[kind]) { tell(`There is already something there for ${name}.`); return; }
       bud[kind] = true;
       store.persist();
-      if (kind === "bowl") el.textContent = "\u{1F95F}";
+      showProp(el, spot);
       el.classList.add("pop");
       setTimeout(() => el.classList.remove("pop"), 400);
       haptic("light");

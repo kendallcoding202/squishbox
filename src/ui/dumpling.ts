@@ -1,6 +1,7 @@
 import type { Character, Face, Hat, Pattern, Shape } from "../data/characters";
 import { RARITY_INFO } from "../data/characters";
 import { FINISH_INFO, type Finish } from "../game/finishes";
+import { artImg, dumplingArt } from "./art";
 import { h } from "./dom";
 import { attachSquish } from "./squish";
 
@@ -290,10 +291,65 @@ export function dumplingSvg(c: Character, finish: Finish = "plain"): SVGSVGEleme
   return svg;
 }
 
+/** How a finish washes over a painted dumpling. Colour blending keeps the shading and the face. */
+const WASH: Record<Exclude<Finish, "plain">, { bg: string; blend: string; opacity: number }> = {
+  gold: { bg: "linear-gradient(135deg, #fff3c4, #f5c542 50%, #c98a12)", blend: "color", opacity: 0.8 },
+  rainbow: { bg: "linear-gradient(135deg, #ff9aa2, #ffd66b 25%, #a8e6a1 50%, #8fd3ff 75%, #d3a4ff)", blend: "color", opacity: 0.55 },
+  glitter: { bg: "linear-gradient(135deg, #ffffff, #e7d9ff 50%, #ffffff)", blend: "soft-light", opacity: 0.6 },
+};
+
+/**
+ * The painted version of a character, with the same layers the SVG has: the rarity and finish
+ * glow behind, the picture, the finish washed over it, and sparkles and stars in front.
+ * Null when this character has no painting yet.
+ */
+function dumplingPainted(c: Character, finish: Finish): HTMLElement | null {
+  const url = dumplingArt(c.id);
+  if (!url) return null;
+  const label = finish === "plain" ? c.name : `${FINISH_INFO[finish].label} ${c.name}`;
+  const back = s("svg", { viewBox: "0 0 100 100", class: "d-layer", "aria-hidden": "true" });
+  if (c.rarity === "epic" || c.rarity === "legendary") {
+    back.appendChild(s("ellipse", { cx: 50, cy: 58, rx: 48, ry: 42, fill: RARITY_INFO[c.rarity].glow, opacity: 0.5 }));
+  }
+  if (finish !== "plain") {
+    back.appendChild(s("ellipse", { cx: 50, cy: 58, rx: 48, ry: 42, fill: FINISH_STOPS[finish].glow, opacity: finish === "glitter" ? 0.3 : 0.45 }));
+  }
+  back.appendChild(s("ellipse", { cx: 50, cy: 95, rx: 30, ry: 4.5, fill: "rgba(0,0,0,0.08)" }));
+  const pic = h("div", { class: "d-pic", role: "img", "aria-label": label });
+  pic.append(back, artImg(url, "d-layer d-img"));
+  if (finish !== "plain") {
+    const w = WASH[finish];
+    pic.appendChild(h("span", {
+      class: "d-layer d-wash",
+      style: `background:${w.bg};mix-blend-mode:${w.blend};opacity:${w.opacity};-webkit-mask-image:url("${url}");mask-image:url("${url}")`,
+    }));
+  }
+  const front = s("svg", { viewBox: "0 0 100 100", class: "d-layer", "aria-hidden": "true" });
+  if (c.rarity === "legendary") {
+    for (const [x, y] of [[10, 26], [90, 22], [92, 70], [8, 74]] as const) {
+      front.appendChild(s("path", { d: `M${x} ${y - 5} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 z`, fill: "#ffd23f" }));
+    }
+  }
+  if (finish === "glitter" || finish === "gold") {
+    const spark = s("g", { class: "sparkles" });
+    SPARKLES.forEach(([x, y, r], i) => {
+      spark.appendChild(s("path", {
+        d: `M${x} ${y - r} l${r * 0.4} ${r * 0.6} l${r * 0.6} ${r * 0.4} l-${r * 0.6} ${r * 0.4} l-${r * 0.4} ${r * 0.6} l-${r * 0.4} -${r * 0.6} l-${r * 0.6} -${r * 0.4} l${r * 0.6} -${r * 0.4} z`,
+        fill: finish === "gold" ? "#fff6d0" : "#ffffff",
+        opacity: 0.9,
+        style: `animation-delay:${(i * 0.35).toFixed(2)}s`,
+      }));
+    });
+    front.appendChild(spark);
+  }
+  pic.appendChild(front);
+  return pic;
+}
+
 /** A squishable dumpling: press and drag to squash, release for a springy wobble. */
 export function dumplingEl(c: Character, size = 96, opts: { idle?: boolean; fullSquish?: boolean; inHorizontalScroller?: boolean; finish?: Finish; decorative?: boolean } = {}): HTMLElement {
   const finish = opts.finish ?? "plain";
-  const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingSvg(c, finish));
+  const inner = h("div", { class: `dumpling-inner${opts.idle ? " idle" : ""}` }, dumplingPainted(c, finish) ?? dumplingSvg(c, finish));
   // Inside a tile that already carries its own label, the picture is decoration: without this
   // a reader says the dumpling's name twice, once for the tile and once for the drawing.
   const wrap = h("div", { class: `dumpling${finish === "plain" ? "" : ` finish-${finish}`}`, style: `width:${size}px;height:${size}px` }, inner);

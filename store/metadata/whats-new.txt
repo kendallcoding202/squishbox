@@ -1,6 +1,8 @@
-# 1.4.1
-A fix for a serious problem: after the last update, some players opened Squishbox and found their collection gone.
+# 1.5
+Every dumpling has been redrawn. All 66 of them, from Bao to Northstar, are now soft, squishy and shiny, and they still squish when you press them.
 
-Your dumplings are now kept safe in two places, and the app checks both before it ever starts a new game, so an update cannot empty your basket again.
+Your buddy's room, the garden and the kitchen are painted too, with a proper bowl and cup to fill, and the baskets in the shop have had a makeover.
 
-We are very sorry if this happened to you. This update cannot bring a lost collection back, but it makes sure it does not happen again.
+Nothing else has changed: your collection, coins and buddy are all exactly where you left them.
+
+The Snowy Steamer opens on December 1st.
