@@ -6,7 +6,7 @@
 // new prop shows up here without anyone remembering to add it.
 import { build } from "esbuild";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { BOXES, PLACES, PROPS, STYLE, dumplingPrompt } from "./spec.mjs";
+import { BOXES, FILLED, PLACES, PROPS, STYLE, dumplingPrompt } from "./spec.mjs";
 
 const root = new URL("../../", import.meta.url);
 async function load(entry) {
@@ -34,7 +34,9 @@ for (const id of [...needed, "bowl-full", "cup-full", "window"]) {
   const p = PROPS[id];
   if (!p) throw new Error(`No art description for the prop "${id}" in scripts/art/spec.mjs`);
   const wide = typeof p === "object" && p.wide;
-  add("props", id, `${STYLE.STYLE_THING} ${typeof p === "object" ? p.text : p}`, "scenery.png", { size: wide ? "1536x1024" : "1024x1024" });
+  // A path ref (with a slash) is read from the repository; a bare name from scripts/art/reference/.
+  const ref = FILLED[id] ? `art-work/raw/props/${FILLED[id]}.png` : "scenery.png";
+  add("props", id, `${STYLE.STYLE_THING} ${typeof p === "object" ? p.text : p}`, ref, { size: wide ? "1536x1024" : "1024x1024" });
 }
 
 for (const p of GAME_PLACES) {

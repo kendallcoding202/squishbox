@@ -153,10 +153,12 @@ export function dumplingPrompt(c) {
 
 /** The things in the buddy's three places, by spot id, plus the two states of the bowl and cup. */
 export const PROPS = {
-  "bowl": "A small round ceramic pet-style food bowl, cream with a blue rim, empty.",
-  "bowl-full": "A small round ceramic pet-style food bowl, cream with a blue rim, heaped with little round rice balls and a few green peas.",
+  "bowl": "A small round ceramic food bowl, cream with a blue rim, empty.",
+  // The full ones are drawn from the empty ones (see FILLED), so filling the bowl changes what
+  // is in it and nothing else.
+  "bowl-full": "Exactly the same bowl as in the reference image, same shape, colours and angle, now heaped with little round rice balls and a few green peas. Nothing printed or drawn on the bowl.",
   "cup": "A small round teacup with no handle, pale green, empty.",
-  "cup-full": "A small round teacup with no handle, pale green, full of warm tea with a curl of steam above it.",
+  "cup-full": "Exactly the same cup as in the reference image, same shape, colours, decoration and angle, now full to near the brim with warm golden tea. No steam: nothing above the rim.",
   "plant": "A small potted house plant with a few big rounded green leaves in a terracotta pot.",
   "toys": "A small open wooden toy box with a ball, a building block and a little plush bear peeking out.",
   "window": "A small square window in a warm wooden frame, seen straight on, showing pale blue sky, one small cloud and a bit of sunshine.",
@@ -174,6 +176,9 @@ export const PROPS = {
   "shelf": "A small wooden kitchen shelf with two little tins and a jar on it.",
   "mat": { wide: true, text: "A round woven straw mat seen from slightly above, warm beige, wide and flat, like a little rug to sit on." },
 };
+
+/** Props drawn from another prop's picture instead of the style reference: full from empty. */
+export const FILLED = { "bowl-full": "bowl", "cup-full": "cup" };
 
 /** The shop's baskets, by box id. */
 export const BOXES = {

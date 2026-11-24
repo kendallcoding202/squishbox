@@ -41,7 +41,7 @@ def generate(job, model, quality):
     body, ctype = multipart(
         {"model": model, "prompt": job["prompt"], "size": job["size"], "quality": quality,
          "background": job["background"], "output_format": "png", "n": 1},
-        [("image[]", os.path.join(REF, job["ref"]))])
+        [("image[]", os.path.join(ROOT, job["ref"]) if "/" in job["ref"] else os.path.join(REF, job["ref"]))])
     key = os.environ.get("OPENAI_API_KEY", "added-by-proxy")
     for attempt in range(4):
         req = urllib.request.Request("https://api.openai.com/v1/images/edits", data=body,
